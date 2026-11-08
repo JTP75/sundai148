@@ -361,3 +361,21 @@ def _load_lines(session_id: str, index: int, skill: str, body: str | None, _prob
 
 def _write_session(source: Path, session_id: str, lines: list[dict]) -> None:
     io.write_jsonl(source / f"{session_id}.jsonl", lines)
+
+def test_missing_created_at_falls_back_to_transcript_time(tmp_path):
+    import pandas as pd
+
+    from potency.adapters import claude_code
+
+    src = tmp_path / "src"
+    (src / "transcripts").mkdir(parents=True)
+    sample = Path(__file__).resolve().parent / "fixtures" / "claude_code_sample" / "transcripts"
+    for f in sample.glob("*.jsonl"):
+        (src / "transcripts" / f.name).write_bytes(f.read_bytes())
+    meta = pd.DataFrame({"session_id": ["sess-a", "sess-b", "sess-c"], "repo_id": ["r", "r", "r"],
+                         "user_id": ["u", "u", "u"], "cli_version": ["", "", ""],
+                         "created_at": [pd.NaT, pd.Timestamp("2026-02-02T09:00:00Z"), None]})
+    meta.to_parquet(src / "sessions.parquet")
+    tables = claude_code.extract(src, "cc")
+    starts = {s["session_id"]: s["start_ts"] for s in tables["sessions"]}
+    assert all(isinstance(v, float) and v > 0 for v in starts.values())

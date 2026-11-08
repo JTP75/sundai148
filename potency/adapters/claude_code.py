@@ -36,6 +36,14 @@ _WS = re.compile(r"\s+")
 
 
 # ------------------------------------------------------------------ small parsing helpers
+def _first_float(*values) -> float:
+    """First value that is a real float (missing metadata timestamps can be None or NaT)."""
+    for v in values:
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v:
+            return float(v)
+    return 0.0
+
+
 def _epoch(value) -> float | None:
     """Epoch seconds from a Claude Code timestamp (ISO 8601 string), a number, or a pandas timestamp."""
     if value is None:
@@ -47,8 +55,11 @@ def _epoch(value) -> float | None:
     if hasattr(value, "to_pydatetime"):  # pandas.Timestamp: replace() below pins the timezone
         value = value.to_pydatetime()
     if isinstance(value, datetime):
-        dt = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-        return dt.timestamp()
+        try:
+            dt = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+        except (ValueError, OverflowError):  # pandas.NaT and out-of-range values
+            return None
     text = str(value).strip()
     if not text:
         return None
@@ -420,7 +431,7 @@ def extract(source: Path, corpus: str, sessions_meta: Path | None = None) -> dic
         sessions.append({
             "corpus": corpus,
             "session_id": sid,
-            "start_ts": _epoch(row.get("created_at")) if row.get("created_at") else parsed["start_ts"],
+            "start_ts": _first_float(_epoch(row.get("created_at")), parsed["start_ts"], 0.0),
             "source": None,  # Claude Code transcripts carry no session source
             "task_key": parsed["task_key"],
             "cluster_key": cluster_key,
