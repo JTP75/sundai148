@@ -1,0 +1,39 @@
+# Corpus registry (design D12, D21; corpus-intake: "Corpus registry").
+#
+# One entry per corpus: name, harness, models when known, date range, privacy class, source location,
+# the adapter that turns its logs into the D12 tables, the field supplying the cluster key, and — for
+# public corpora — the license and URL recorded before any of its data is used.
+#
+# `load_registry` in potency/adapters/claude_code.py reads this file into {name: entry}.
+
+swechat-v1:
+  name: swechat-v1
+  harness: claude-code
+  adapter: claude_code
+  models: [opus 4.5-4.7, sonnet 4.5-4.7, haiku 4.5-4.7]  # mixed within and across sessions
+  date_range:
+    start: "2026-01-05"
+    end: "2026-04-19"
+  privacy: public
+  source: "pacel-pc:~/data/cc-public/swe-chat-v1/"  # transcripts/<session_id>.jsonl + sessions.parquet
+  cluster_key: repo_id  # design D21
+  license: ODC-BY
+  url: https://huggingface.co/datasets/cfahlgren1/SWE-chat
+  notes: >-
+    Ungated copy of SALT-NLP SWE-chat v1: 4,852 Claude Code sessions, 1,677 Skill loads (87 errored),
+    201 repos. Text is allowed by policy; tables still carry only schema columns.
+
+hermes-orin:
+  name: hermes-orin
+  harness: hermes
+  adapter: hermes
+  models: []  # not recorded in ~/.hermes/state.db
+  date_range:
+    start: "2026-10-01"
+    end: "2026-11-08"
+  privacy: private
+  source: "pacel-orin:~/.hermes/state.db"  # read-only, one transaction; raw logs never leave the machine
+  cluster_key: task_key  # design D21
+  notes: >-
+    Private corpus. Only the allowlisted derived fields leave pacel-orin (signatures, skill names,
+    labels, flags, ids, hashes, counts, timestamps).
