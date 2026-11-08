@@ -1,0 +1,121 @@
+name: ci
+
+# Cross-platform runtime (design D17, tasks 6.2): unit tests plus the synthetic end-to-end run on
+# Ubuntu, macOS and Windows for Python 3.11 and 3.12, then a warn-only comparison of the SHA-256 of
+# every CSV/JSON output across the three operating systems.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / py${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Regenerate the frozen fixtures
+        run: python tests/make_fixtures.py
+
+      - name: Fixtures regenerate byte-identically
+        run: git diff --exit-code tests/fixtures
+
+      - name: Unit tests
+        run: python -m pytest -q
+
+      # evidence/expect/score belong to W3/W4 and are stubs until those PRs land, so run_all exits
+      # non-zero with a clear "still a stub" message. The step stays non-blocking so the rest of the
+      # pipeline (and the hash artifact below) is exercised on every OS meanwhile. Flip this to a hard
+      # failure once W3 and W4 are merged.
+      - name: End-to-end on the synthetic corpus (stub stages until W3/W4 land)
+        continue-on-error: true
+        run: python -m potency.run_all --data tests/fixtures/synthetic --corpus synth
+
+      - name: List SHA-256 of every CSV/JSON output
+        if: always()
+        shell: python
+        run: |
+          import hashlib
+          import pathlib
+
+          root = pathlib.Path("tests/fixtures/synthetic")
+          lines = []
+          for path in sorted(root.rglob("*")):
+              if path.is_file() and path.suffix.lower() in (".csv", ".json"):
+                  digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                  lines.append(f"{digest}  {path.relative_to(root).as_posix()}")
+          pathlib.Path("output-hashes.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          print("\n".join(lines))
+
+      - name: Upload the output hash list
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: output-hashes-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: output-hashes.txt
+          if-no-files-found: warn
+
+  compare-hashes:
+    name: compare output hashes across OSes (warn only)
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: output-hashes-*-py3.12
+          path: hashes
+
+      # Warn-only for now: the cross-OS hash gate becomes a failure once W3/W4 outputs exist. The
+      # comparison covers Python 3.12 on the three OSes, which is the demo configuration.
+      - name: Compare
+        run: |
+          python3 - <<'PY'
+          import pathlib, sys
+          files = sorted(pathlib.Path("hashes").rglob("output-hashes.txt"))
+          if len(files) < 2:
+              print("::warning::fewer than two hash lists; comparison skipped")
+              sys.exit(0)
+          def load(path):
+              out = {}
+              for line in path.read_text(encoding="utf-8").splitlines():
+                  if line.strip():
+                      digest, name = line.split("  ", 1)
+                      out[name] = digest
+              return out
+          base_path = files[0]
+          base = load(base_path)
+          problems = 0
+          for path in files[1:]:
+              other = load(path)
+              label = path.parent.name
+              for name in sorted(set(base) | set(other)):
+                  if base.get(name) != other.get(name):
+                      problems += 1
+                      print(f"::warning::{name}: {base_path.parent.name}={base.get(name)} {label}={other.get(name)}")
+          if problems:
+              print(f"::warning::{problems} output hash difference(s) across platforms")
+          else:
+              print(f"all {len(files)} hash lists agree ({len(base)} files)")
+          PY
