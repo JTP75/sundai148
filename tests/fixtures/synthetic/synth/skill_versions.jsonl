@@ -1,0 +1,9 @@
+{"content_sha256":null,"corpus":"synth","skill":"habit-skill","valid_from_ts":1767225600.0,"version_id":"habit-v1","version_source":"injected"}
+{"content_sha256":null,"corpus":"synth","skill":"novel-skill","valid_from_ts":1769817600.0,"version_id":"novel-v1","version_source":"injected"}
+{"content_sha256":null,"corpus":"synth","skill":"mid-skill","valid_from_ts":1767225600.0,"version_id":"mid-v1","version_source":"injected"}
+{"content_sha256":null,"corpus":"synth","skill":"mid-skill","valid_from_ts":1772409600.0,"version_id":"mid-v2","version_source":"injected"}
+{"content_sha256":null,"corpus":"synth","skill":"alt-skill","valid_from_ts":1767225600.0,"version_id":"alt-v1","version_source":"injected"}
+{"content_sha256":null,"corpus":"synth","skill":"cond-skill","valid_from_ts":1767225600.0,"version_id":"cond-v1","version_source":"injected"}
+{"content_sha256":null,"corpus":"synth","skill":"avoid-skill","valid_from_ts":1767225600.0,"version_id":"avoid-v1","version_source":"injected"}
+{"content_sha256":null,"corpus":"synth","skill":"empty-skill","valid_from_ts":1767225600.0,"version_id":"empty-v1","version_source":"injected"}
+{"content_sha256":null,"corpus":"synth","skill":"core-skill","valid_from_ts":1767225600.0,"version_id":"core-cur","version_source":"version_core"}

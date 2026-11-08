@@ -1,0 +1,101 @@
+[
+  {
+    "reason": "matched",
+    "rule_id": "novel-1",
+    "session_id": "case-matched",
+    "status": "supported_agreement"
+  },
+  {
+    "reason": "matched_alternative",
+    "rule_id": "alt-1",
+    "session_id": "case-alternative",
+    "status": "supported_agreement"
+  },
+  {
+    "reason": "no_match_complete_window",
+    "rule_id": "novel-1",
+    "session_id": "case-nomatch",
+    "status": "no_observed_agreement"
+  },
+  {
+    "reason": "incomplete_window",
+    "rule_id": "novel-1",
+    "session_id": "case-incomplete",
+    "status": "insufficient_evidence"
+  },
+  {
+    "reason": "same_batch_only",
+    "rule_id": "novel-1",
+    "session_id": "case-samebatch",
+    "status": "insufficient_evidence"
+  },
+  {
+    "reason": "matched",
+    "rule_id": "cond-1",
+    "session_id": "case-cond-applies",
+    "status": "supported_agreement"
+  },
+  {
+    "reason": "applicability_unknown",
+    "rule_id": "cond-2",
+    "session_id": "case-cond-applies",
+    "status": "insufficient_evidence"
+  },
+  {
+    "reason": "applicability_false",
+    "rule_id": "cond-1",
+    "session_id": "case-cond-false",
+    "status": "not_applicable"
+  },
+  {
+    "reason": "applicability_unknown",
+    "rule_id": "cond-2",
+    "session_id": "case-cond-false",
+    "status": "insufficient_evidence"
+  },
+  {
+    "reason": "unsupported_rule",
+    "rule_id": "empty-1",
+    "session_id": "case-unsupported",
+    "status": "insufficient_evidence"
+  },
+  {
+    "reason": "matched",
+    "rule_id": "core-1",
+    "session_id": "case-core",
+    "status": "supported_agreement"
+  },
+  {
+    "reason": "outside_core",
+    "rule_id": "core-2",
+    "session_id": "case-core",
+    "status": "insufficient_evidence"
+  },
+  {
+    "reason": "matched",
+    "rule_id": "avoid-1",
+    "session_id": "case-avoid",
+    "status": "supported_agreement"
+  },
+  {
+    "reason": "excluded_maintenance",
+    "rule_id": "novel-1",
+    "session_id": "case-maintenance",
+    "status": null
+  },
+  {
+    "flags": [
+      "overlap"
+    ],
+    "reason": "matched",
+    "rule_id": "alt-1",
+    "session_id": "case-repeat-overlap",
+    "status": "supported_agreement"
+  },
+  {
+    "reason": "matched",
+    "rule_id": "novel-1",
+    "session_id": "case-preloaded",
+    "status": "supported_agreement"
+  }
+]

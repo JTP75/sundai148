@@ -1,0 +1,64 @@
+{
+  "attribution_skill_steps": {
+    "sess-a": "commit"
+  },
+  "cluster_keys": {
+    "sess-a": "org/repo-1",
+    "sess-b": "org/repo-1",
+    "sess-c": "org/repo-2"
+  },
+  "commit_rules_auto": [
+    "terminal: git status",
+    "terminal: git commit",
+    "terminal: gh pr create"
+  ],
+  "loads": [
+    {
+      "flags": [],
+      "session_id": "sess-a",
+      "skill": "commit",
+      "version_source": "injected"
+    },
+    {
+      "flags": [],
+      "session_id": "sess-b",
+      "skill": "review",
+      "version_source": "injected"
+    },
+    {
+      "flags": [
+        "repeat"
+      ],
+      "session_id": "sess-b",
+      "skill": "review",
+      "version_source": "version_unknown"
+    },
+    {
+      "flags": [],
+      "session_id": "sess-b",
+      "skill": "commit",
+      "version_source": "version_unknown"
+    }
+  ],
+  "must_not_appear_anywhere": [
+    "sk-secret-123",
+    "Authorization",
+    "api.x.io"
+  ],
+  "notes": "Load step = the Skill call; the injected body (isMeta + sourceToolUseID) gives version_source 'injected'. A second load of the same skill in a session is flagged 'repeat'. A load with no injected body and no other source is 'version_unknown'.",
+  "same_batch": {
+    "sess-a": [
+      "terminal: git status",
+      "read"
+    ]
+  },
+  "sessions": 3,
+  "signatures_sess_a": [
+    "load: commit",
+    "terminal: git status",
+    "read",
+    "terminal: git add",
+    "terminal: git commit",
+    "terminal: git push"
+  ]
+}

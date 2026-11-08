@@ -1,0 +1,4 @@
+session_id,repo_id,user_id,agent,created_at,cli_version
+sess-a,org/repo-1,u1,claude-code,2026-02-01T10:00:00Z,2.1.0
+sess-b,org/repo-1,u2,claude-code,2026-02-02T09:00:00Z,2.1.0
+sess-c,org/repo-2,u1,claude-code,2026-02-03T08:00:00Z,1.0.0

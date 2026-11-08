@@ -1,0 +1,9 @@
+{"agent_touched":true,"changes":[],"corpus":"synth","created_by":"agent","created_ts":1766361600.0,"skill":"habit-skill"}
+{"agent_touched":false,"changes":[],"corpus":"synth","created_by":null,"created_ts":1769817600.0,"skill":"novel-skill"}
+{"agent_touched":true,"changes":[{"action":"patch","actor":"curator","added":["terminal: make"],"removed":[],"ts":1772409600.0}],"corpus":"synth","created_by":null,"created_ts":1765497600.0,"skill":"mid-skill"}
+{"agent_touched":false,"changes":[],"corpus":"synth","created_by":null,"created_ts":null,"skill":"alt-skill"}
+{"agent_touched":true,"changes":[],"corpus":"synth","created_by":"learn","created_ts":null,"skill":"cond-skill"}
+{"agent_touched":false,"changes":[],"corpus":"synth","created_by":null,"created_ts":null,"skill":"avoid-skill"}
+{"agent_touched":false,"changes":[],"corpus":"synth","created_by":null,"created_ts":null,"skill":"empty-skill"}
+{"agent_touched":false,"changes":[],"corpus":"synth","created_by":null,"created_ts":null,"skill":"core-skill"}
+{"agent_touched":true,"changes":[],"corpus":"synth","created_by":"agent","created_ts":1767225600.0,"skill":"never-loaded-skill"}

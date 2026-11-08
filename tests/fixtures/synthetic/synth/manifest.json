@@ -1,0 +1,10 @@
+{
+  "corpus": "synth",
+  "generator": "tests/make_fixtures.py",
+  "row_counts": {
+    "loads": 290,
+    "sessions": 473,
+    "steps": 12478
+  },
+  "seed": 148
+}

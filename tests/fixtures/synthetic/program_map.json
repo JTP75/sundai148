@@ -1,0 +1,12 @@
+{
+  "cat": "public",
+  "docker": "public",
+  "git": "public",
+  "gog": "local",
+  "grep": "public",
+  "ls": "public",
+  "make": "public",
+  "npm": "public",
+  "pytest": "public",
+  "python": "public"
+}
