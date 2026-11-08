@@ -72,6 +72,10 @@
   - position in the session.
 - **Model:** L2 logistic regression per command family, with a bigram-backoff fallback for rare commands. One model per corpus; base rates are not pooled across corpora.
 - **Vocabulary:** train-only, with test OOV coverage reported. The model and the baselines share the same candidate universe and seen-item mask.
+- **Target set:** real corpora have thousands of one-off signatures (`swechat-v1`: 7,008 train signatures, 866 with ≥10 uses). Per-command models are fitted only for every prescribed command (observable or alternative of any rule) plus the 300 most frequent train commands. This target set is also the candidate universe for hit-rate@k; the full train vocabulary size is reported next to it. Corpora under the cap (e.g. the synthetic fixture) are unaffected.
+- **Feature pruning:** previous signatures outside the target set become `<other>`, and task keys seen in fewer than 5 train sessions become `<rare>` (real task keys are per-session prompt hashes). This keeps each fit under a second on real data and stops one-off values from being memorized.
+- **Evaluation sample:** window-level AUC, Brier and calibration use at most 20,000 test windows, chosen by a deterministic even stride (real corpora otherwise pool hundreds of millions of window × target pairs). `expect_eval.json` reports windows evaluated and windows total. Hit-rate@k uses every first-occurrence test step.
+- **Observability:** the stage logs progress (stage markers, fit counts, elapsed time) to stderr only, so long runs can be monitored without touching outputs.
 - **Quality, on test-period no-load windows:**
   - AUC, calibration and Brier score against a **popularity-only** baseline;
   - next-command **hit-rate@{1,5,10}** on first occurrences, overall and by frequency decile, with step and session counts.

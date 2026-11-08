@@ -49,6 +49,24 @@ The candidate vocabulary SHALL be built from train sessions only. The report SHA
 - **WHEN** a test step runs a command never seen in train
 - **THEN** it is a miss for both the model and the baseline, and is counted in OOV coverage
 
+### Requirement: Bounded target set
+Per-command models SHALL be fitted only for every prescribed command plus a fixed number (300) of the most frequent train commands. The same set SHALL be the candidate universe for hit-rate@k for every method, and the report SHALL state both its size and the full train vocabulary size. Test steps whose command is outside the set SHALL count as misses for every method.
+
+#### Scenario: Large real vocabulary
+- **WHEN** a corpus has 7,008 distinct train signatures
+- **THEN** models are fitted for at most 300 plus the prescribed commands, and `expect_eval.json` reports the candidate count and `full_train_vocabulary: 7008`
+
+#### Scenario: Prescribed rare command
+- **WHEN** a prescribed command occurs only twice in train
+- **THEN** it is still a target, with a base-rate fallback estimate
+
+### Requirement: Bounded evaluation cost
+Window-level AUC, Brier and calibration SHALL be computed on at most 20,000 test windows, chosen by a deterministic even stride, and the report SHALL state windows evaluated and windows total.
+
+#### Scenario: Large test split
+- **WHEN** a corpus has 270,286 test windows
+- **THEN** the window metrics use 20,000 evenly spaced windows and `expect_eval.json` reports both counts
+
 ### Requirement: Per-corpus models
 A separate expectation model SHALL be fitted per corpus. Base rates SHALL NOT be pooled across corpora.
 
