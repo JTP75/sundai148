@@ -1,6 +1,6 @@
 # Sundai Hack 148: skill potency with BehaviorGPT
 
-Do agents actually follow the skills they load? This project treats an agent's tool calls as a behavior history and uses Unbox AI's BehaviorGPT to measure how much each skill load shifts the agent toward the skill's prescribed commands. The output is a ranking of "loaded but inert" skills. The first corpus is Hermes (pacel-orin `state.db`: 254 skill loads, 68 skills).
+Do agents actually follow the skills they load? This project treats an agent's tool calls as a behavior history and measures each skill's **lift**: how much more often the agent runs the skill's prescribed commands after loading it than a next-action model predicts it would have anyway. Controls (specificity weighting, placebo skills, familiarity strata, pre/post skill creation) keep the result from reducing to command popularity or what the model already knows. BehaviorGPT (Unbox AI) is an optional alternative expectation model. The output is a ranking of "loaded but inert" skills. The first corpus is Hermes (pacel-orin `state.db`: 254 skill loads, 68 skills).
 
 ## Layout
 
