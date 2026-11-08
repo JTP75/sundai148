@@ -14,6 +14,7 @@ Divergences from a naive reading of the design, all recorded in the PR body:
 from __future__ import annotations
 
 import argparse
+import bisect
 import math
 import random
 import sys
@@ -150,9 +151,14 @@ class BaseRates:
                 self.windows.append((float(start_ts), frozenset(sigs[t + 1: t + 1 + WINDOW])))
         self.total = len(self.windows)
         self.hits: dict[str, int] = defaultdict(int)
-        for _, sigs in self.windows:
+        sig_ts: dict[str, list[float]] = defaultdict(list)
+        for ts, sigs in self.windows:
             for sig in sigs:
                 self.hits[sig] += 1
+                sig_ts[sig].append(ts)
+        # Sorted start times, overall and per signature, so raw_before is two binary searches, not a scan.
+        self._all_ts = sorted(ts for ts, _ in self.windows)
+        self._sig_ts = {sig: sorted(v) for sig, v in sig_ts.items()}
 
     def rate(self, sig: str) -> float:
         """Smoothed per-window hit rate; the exact zero of a never-seen command becomes ALPHA/(n+2)."""
@@ -166,12 +172,14 @@ class BaseRates:
 
     def raw_before(self, sig: str, cutoff_ts: float | None) -> float:
         """Raw (unsmoothed) rate over windows that start before the skill's creation date."""
-        subset = [sigs for ts, sigs in self.windows if cutoff_ts is None or ts < cutoff_ts]
-        if not subset:
-            subset = [sigs for _, sigs in self.windows]
-        if not subset:
+        if not self._all_ts:
             return 0.0
-        return sum(1 for sigs in subset if sig in sigs) / len(subset)
+        mine = self._sig_ts.get(sig, ())
+        n = len(self._all_ts) if cutoff_ts is None else bisect.bisect_left(self._all_ts, cutoff_ts)
+        if n == 0:  # no window before the cutoff: fall back to every window
+            return len(mine) / len(self._all_ts)
+        k = len(mine) if cutoff_ts is None else bisect.bisect_left(mine, cutoff_ts)
+        return k / n
 
 
 def familiarity_label(rate: float) -> str:
