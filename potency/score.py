@@ -87,7 +87,6 @@ class Inputs:
     corpus: str
     corpus_dir: Path
     sessions: dict[str, dict]
-    session_rows: list[dict]
     loads: dict[str, dict]
     rules: dict[tuple[str, str], dict]
     provenance: dict[str, dict]
@@ -106,8 +105,7 @@ def _require(path: Path) -> Path:
 def read_inputs(corpus_dir, program_map: dict[str, str] | None = None) -> Inputs:
     corpus_dir = Path(corpus_dir)
     out = corpus_dir / "out"
-    session_rows = io.read_table(corpus_dir, "sessions")
-    sessions = {s["session_id"]: s for s in session_rows}
+    sessions = {s["session_id"]: s for s in io.read_table(corpus_dir, "sessions")}
     loads = {ld["load_id"]: ld for ld in io.read_table(corpus_dir, "loads")}
     rules = {(r["version_id"], r["rule_id"]): r for r in io.read_table(corpus_dir, "rules")}
     provenance = {p["skill"]: p for p in io.read_table(corpus_dir, "provenance")}
@@ -125,7 +123,6 @@ def read_inputs(corpus_dir, program_map: dict[str, str] | None = None) -> Inputs
         corpus=corpus_dir.name,
         corpus_dir=corpus_dir,
         sessions=sessions,
-        session_rows=session_rows,
         loads=loads,
         rules=rules,
         provenance=provenance,
@@ -358,20 +355,24 @@ class SkillStats:
 
 
 def _fit_prior(stats: dict[str, SkillStats]) -> tuple[float, float, dict[str, float]]:
-    """Normal-normal empirical Bayes: pooled mean, between-skill variance, per-skill sampling variance."""
-    per_load_var = {
-        sk: _variance(s.lifts) for sk, s in stats.items() if s.n_loads >= 2
+    """Normal-normal empirical Bayes: pooled mean, between-skill variance, per-skill sampling variance.
+
+    The prior is fitted on ranked skills only (>= MIN_RANKED_LOADS scorable loads). A single-load
+    skill's lift is too noisy to set the prior, but it is still shrunk toward it.
+    """
+    base = {sk: s for sk, s in stats.items() if s.n_loads >= schema.MIN_RANKED_LOADS} or stats
+    per_load_var = {sk: _variance(s.lifts) for sk, s in base.items()}
+    pooled = _mean(per_load_var.values())
+    if pooled is None:
+        pooled = _variance([s.mean for s in base.values()])
+    var_i = {
+        sk: (per_load_var[sk] / s.n_loads if s.n_loads >= schema.MIN_RANKED_LOADS else pooled)
+        for sk, s in stats.items()
     }
-    pooled = _mean(per_load_var.values()) if per_load_var else _variance(
-        [s.mean for s in stats.values()]
-    )
-    if not pooled:
-        pooled = 0.0
-    var_i = {sk: (per_load_var[sk] / s.n_loads if s.n_loads >= 2 else pooled) for sk, s in stats.items()}
-    mu = _mean([s.mean for s in stats.values()])
+    mu = _mean([s.mean for s in base.values()])
     tau2 = 0.0
-    if len(stats) >= 2:
-        tau2 = max(0.0, _variance([s.mean for s in stats.values()]) - _mean(var_i.values()))
+    if len(base) >= 2:
+        tau2 = max(0.0, _variance([s.mean for s in base.values()]) - _mean(var_i[sk] for sk in base))
     return mu, tau2, var_i
 
 
@@ -642,7 +643,8 @@ def build_potency(
     supported = {r["skill"] for r in rows if r["supported"]}
     evidenced = {row["load_id"] for row in inputs.evidence}
     detail = {
-        "prior": {"mean": mu, "tau2": tau2, "n_skills": len(stats)},
+        "prior": {"mean": mu, "tau2": tau2, "n_skills": len(stats),
+                  "n_prior_skills": sum(1 for s in stats.values() if s.n_loads >= schema.MIN_RANKED_LOADS)},
         "popularity": popularity,
         "sensitivity": sensitivity,
         "bloat": _bloat(inputs, supported),

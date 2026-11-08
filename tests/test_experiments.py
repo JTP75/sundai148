@@ -63,7 +63,7 @@ def test_pre_post_difference_in_differences():
         return rows
 
     inputs = score.Inputs(
-        corpus="hand", corpus_dir=Path("."), sessions=sessions, session_rows=list(sessions.values()),
+        corpus="hand", corpus_dir=Path("."), sessions=sessions,
         loads={"L1": {"load_id": "L1", "skill": "s", "session_id": "tq", "step": 0, "ts": 300.0}},
         rules={}, provenance={"s": {"skill": "s", "created_ts": 200.0, "created_by": None,
                                     "agent_touched": False, "changes": []}},
