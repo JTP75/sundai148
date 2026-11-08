@@ -32,6 +32,15 @@ ASSIGN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _SPLIT_RE = re.compile(r"\|\||&&|;|\||\n|&(?!&)")
 
 
+HASHLIKE_RE = re.compile(r"^[0-9a-f]{7,}$")
+
+
+def _hashlike(tok: str) -> bool:
+    """Commit SHAs, ids and other opaque values: hex runs of 7+ chars, or long tokens with 3+ digits."""
+    return bool(HASHLIKE_RE.match(tok) and any(c.isdigit() for c in tok)) or (
+        len(tok) > 20 and sum(c.isdigit() for c in tok) >= 3)
+
+
 def _tokens(segment: str) -> list[str]:
     try:
         return shlex.split(segment, posix=True)
@@ -68,7 +77,7 @@ def shell_segment_signature(segment: str) -> str | None:
     for tok in toks[i + 1:]:
         if len(parts) > depth:
             break
-        if tok.startswith("-") or not TOKEN_RE.match(tok) or "." in tok or "/" in tok:
+        if tok.startswith("-") or not TOKEN_RE.match(tok) or "." in tok or "/" in tok or _hashlike(tok):
             break
         parts.append(tok)
     return " ".join(parts)

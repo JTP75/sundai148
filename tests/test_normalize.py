@@ -75,3 +75,10 @@ Use `name` as the key.
 def test_program_of():
     assert program_of("terminal: git rebase") == "git"
     assert program_of("read_file") is None
+
+
+def test_hashes_never_become_subcommands():
+    assert shell_signatures("git show a22d461d99fa266db727519ec6cbc0b0cdb7755a") == ["terminal: git show"]
+    assert shell_signatures("commit bdaa7f7b88933b2afb0fd88621ab8a42e248e552") == ["terminal: commit"]
+    assert shell_signatures("git checkout 1a2b3c4") == ["terminal: git checkout"]
+    assert shell_signatures("gh run view 12345") == ["terminal: gh run view"]
