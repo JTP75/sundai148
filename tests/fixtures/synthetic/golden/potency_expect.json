@@ -1,0 +1,33 @@
+{
+  "expect": {
+    "habit-skill": {
+      "abs_max": 0.12,
+      "sign": "zero"
+    },
+    "mid-skill": {
+      "min": 0.15,
+      "sign": "positive"
+    },
+    "novel-skill": {
+      "min": 0.4,
+      "sign": "positive"
+    }
+  },
+  "n_loads": {
+    "alt-skill": 2,
+    "cond-skill": 1,
+    "core-skill": 1,
+    "habit-skill": 88,
+    "mid-skill": 85,
+    "novel-skill": 106
+  },
+  "notes": "habit-skill: high follow-through possible but lift ~ 0; novel-skill: command never seen without the skill.",
+  "unweighted_mean_lift": {
+    "alt-skill": 0.545927,
+    "cond-skill": 0.878553,
+    "core-skill": 0.862162,
+    "habit-skill": 0.037624,
+    "mid-skill": 0.484755,
+    "novel-skill": 0.735849
+  }
+}
