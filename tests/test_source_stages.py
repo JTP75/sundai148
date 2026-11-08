@@ -115,6 +115,9 @@ def test_extract_dispatches_claude_code_lazily(tmp_path, monkeypatch):
 
     fake.extract = fake_extract
     monkeypatch.setitem(sys.modules, "potency.adapters.claude_code", fake)
+    import potency.adapters as adapters_pkg  # the real module may already be bound as a package attribute
+
+    monkeypatch.setattr(adapters_pkg, "claude_code", fake, raising=False)
     source = tmp_path / "transcripts"
     source.mkdir()
     out = tmp_path / "data"
