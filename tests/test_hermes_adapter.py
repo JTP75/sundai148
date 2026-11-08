@@ -144,6 +144,8 @@ def test_rules_are_auto_and_hide_nothing(tables):
         assert rule["approved"] is False
         assert rule["observable"] and all(" " not in sig or sig.startswith(("terminal: ", "load: "))
                                           for sig in rule["observable"])
+    # gog-cli has no replayable edit, so its whole current text is the stable core
+    assert {rule["in_core"] for rule in tables["rules"] if rule["skill"] == "gog-cli"} == {True}
 
 
 def test_provenance(tables):
@@ -246,6 +248,29 @@ def _append_session(db_path: Path, home: Path, session_id: str, start_ts: float)
     msg(6, "tool", "ok", tool_call_id="w3", tool_name="terminal")
     conn.commit()
     conn.close()
+
+
+def test_preload_mapping_by_system_prompt_hash(tmp_path):
+    sample = build(tmp_path)
+    jobs = json.loads(sample["cron_jobs"].read_text(encoding="utf-8"))
+    jobs["jobs"].append({"id": "job-3", "name": "digest", "prompt": "Summarise the inbox.",
+                         "system_prompt_hash": "sph-9", "skills": ["job-tracker"]})
+    sample["cron_jobs"].write_text(json.dumps(jobs), encoding="utf-8")
+    start_ts = 1780020000.0
+    conn = sqlite3.connect(sample["state_db"])
+    conn.execute("INSERT INTO sessions (id, source, model, system_prompt_hash, started_at) VALUES (?,?,?,?,?)",
+                 ("h6", "cron", "m", "sph-9", start_ts))
+    # the first prompt differs from the job prompt, so only the system_prompt_hash can map it
+    conn.execute("INSERT INTO messages (session_id, role, content, timestamp) VALUES (?,?,?,?)",
+                 ("h6", "user", "Summarise the inbox for 2026-06-03.", start_ts + 5))
+    conn.commit()
+    conn.close()
+    tables = hermes.extract(sample["home"], "hermes-test")
+    session = next(row for row in tables["sessions"] if row["session_id"] == "h6")
+    assert session["task_key"] == "job-3"
+    assert session["cluster_key"] == "job-3"
+    loads = [(row["step"], row["skill"], row["trigger"]) for row in tables["loads"] if row["session_id"] == "h6"]
+    assert loads == [(0, "job-tracker", "preloaded")]
 
 
 def test_write_maintenance_and_ledger_version(tmp_path):
