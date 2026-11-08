@@ -418,6 +418,10 @@ def _is_suffix_window(parts: tuple[str, ...], segments: tuple[str, ...]) -> bool
 
 
 # ---------------------------------------------------------------- version bookkeeping (D14)
+# Same text, different evidence: keep the strongest source (design D14 priority order).
+VERSION_PRIORITY = {"injected": 0, "ledger": 1, "skill_manage": 2, "version_core": 3, "version_unknown": 4}
+
+
 class _Versions:
     """Known skill texts, their ids and the rules extracted from them."""
 
@@ -437,6 +441,8 @@ class _Versions:
                 "valid_from_ts": valid_from_ts, "in_core_mode": in_core_mode,
             }
         else:
+            if VERSION_PRIORITY[source] < VERSION_PRIORITY[spec["source"]]:
+                spec["source"] = source
             if spec["valid_from_ts"] is None or (valid_from_ts is not None and valid_from_ts < spec["valid_from_ts"]):
                 spec["valid_from_ts"] = valid_from_ts
             spec["in_core_mode"] = spec["in_core_mode"] or in_core_mode
@@ -623,7 +629,12 @@ def extract_with_meta(home, corpus: str):
     for rows in grouped.values():
         rows.sort(key=lambda m: (m.get("id") is None, m.get("id") or 0))
 
-    skill_dirs = {name: tuple(p for p in info["path"].parent.parts if p) for name, info in skills.items()}
+    skill_dirs = {}
+    for name, info in skills.items():
+        try:
+            skill_dirs[name] = info["path"].parent.relative_to(skills_root).parts
+        except ValueError:  # a SKILL.md outside the skills root: no path matcher
+            continue
 
     # first user prompt and start time per session
     session_meta = {}
