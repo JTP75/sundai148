@@ -58,6 +58,7 @@ def bundle(corpus_dir, out_dir, corpus: str | None = None, forbidden=(), verify:
         for name in members:
             info = zipfile.ZipInfo(name, date_time=FIXED_DATE_TIME)
             info.compress_type = zipfile.ZIP_DEFLATED
+            info.create_system = 3  # pin the header byte so Windows and POSIX produce the same zip
             info.external_attr = 0o644 << 16
             archive.writestr(info, (corpus_dir / name).read_bytes())
     return out
