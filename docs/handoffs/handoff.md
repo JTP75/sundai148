@@ -1,5 +1,7 @@
 # Sundai Hack 148 — handoff (as of 2026-11-08, ~10:50)
 
+> **Superseded.** This early handoff maps commands to Orders and treats top-k as following. Both are replaced by the active OpenSpec change (`openspec/changes/skill-potency/`). Kept for history.
+
 Theme: *Behavioral Models: Predict the next action.* MIT, 10:00–22:00. Sponsor: Unbox AI (Rickard Brüel-Gabrielsson), BehaviorGPT-v4 — 12.5B params, 150B human actions (retail/engagement/payments), zero-shot ranking of unseen catalogs.
 
 ## Starting idea (from `~/hack-148/skill-usefulness-handoff.md`)

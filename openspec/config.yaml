@@ -1,5 +1,10 @@
 schema: spec-driven
 
+context: |
+  Analysis stages must run identically on Windows, macOS and Linux (team members use all three).
+  Raw private agent logs never leave their source machine; only allowlisted derived fields do.
+  All changes land through pull requests.
+
 # Project context (optional)
 # Add only constraints that should guide OpenSpec artifacts and workflows.
 # Include constraints an agent cannot infer by reading the code.
