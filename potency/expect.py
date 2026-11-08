@@ -268,12 +268,14 @@ class ExpectationModel:
               "by_prev": {k: tuple(v) for k, v in by_prev.items()}}
         if n_pos >= MIN_POSITIVES and n_neg >= MIN_POSITIVES:
             fit_idx = idx
+            neg_keep_frac = 1.0
             if len(idx) > MAX_FIT_ROWS:
                 pos_idx = idx[y_all[idx] == 1]
                 neg_idx = idx[y_all[idx] == 0]
                 keep = max(MAX_FIT_ROWS - len(pos_idx), 1)
                 if len(neg_idx) > keep:
                     take = np.linspace(0, len(neg_idx) - 1, keep).astype(int)
+                    neg_keep_frac = keep / len(neg_idx)
                     neg_idx = neg_idx[take]
                 fit_idx = np.sort(np.concatenate([pos_idx, neg_idx]))
             Xf = _with_base(X[fit_idx], base)
@@ -281,7 +283,10 @@ class ExpectationModel:
                 C=1.0, max_iter=2000, random_state=schema.SEED, solver="lbfgs"
             )
             clf.fit(Xf, y_all[fit_idx])
-            tm.update(kind="logistic", model=clf)
+            if neg_keep_frac < 1.0:
+                # Prior correction for negative subsampling: the fitted odds are inflated by 1/frac.
+                clf.intercept_ = clf.intercept_ + np.log(neg_keep_frac)
+            tm.update(kind="logistic", model=clf, neg_keep_frac=float(neg_keep_frac))
         return tm
 
     def _fit_targets(self) -> None:

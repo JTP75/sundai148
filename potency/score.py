@@ -32,6 +32,10 @@ WEIGHTED_OBLIGATIONS = ("required", "conditional")
 
 
 # ------------------------------------------------------------------ small statistics
+# A skill seen in fewer clusters than this gets no directional label: its bootstrap CI is degenerate.
+MIN_CI_CLUSTERS = 2
+
+
 def _mean(xs):
     xs = list(xs)
     return sum(xs) / len(xs) if xs else None
@@ -603,6 +607,8 @@ def build_potency(
         label = None
         if lo is not None and hi is not None:
             label = "positive" if lo > 0 else "negative" if hi < 0 else "inconclusive"
+            if len({sc.cluster_key for sc in scores_here}) < MIN_CI_CLUSTERS:
+                label = "inconclusive"  # a cluster bootstrap over one cluster has no variance to estimate
         determinate = sum(len(sc.entries) for sc in scores_here)
         n_supported = sum(sc.n_supported for sc in scores_here)
         rows.append({

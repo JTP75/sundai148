@@ -59,6 +59,10 @@ Within each corpus, the system SHALL rank every skill with ≥2 scorable loads b
 - **WHEN** a skill has 3 scorable loads from 1 session
 - **THEN** it is ranked with a wide CI and is not marked supported
 
+#### Scenario: Single-cluster skill
+- **WHEN** a skill's 7 scorable loads all come from one repository
+- **THEN** it is ranked but labeled "inconclusive", whatever its bootstrap interval
+
 #### Scenario: Single-load skill
 - **WHEN** a skill has 1 scorable load
 - **THEN** it appears in an "insufficient data" list, not in the ranking
