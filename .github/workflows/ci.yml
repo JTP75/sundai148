@@ -17,6 +17,10 @@ jobs:
     name: ${{ matrix.os }} / py${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    # The foundation pins numpy==2.5.4, which requires Python >=3.12, so `pip install -r requirements.txt`
+    # cannot resolve on 3.11. The 3.11 legs stay in the matrix as a visible signal but do not block until
+    # requirements.txt is relaxed (see the PR's contract change requests). Flip this off when it is fixed.
+    continue-on-error: ${{ matrix.python-version == '3.11' }}
     strategy:
       fail-fast: false
       matrix:
@@ -44,12 +48,10 @@ jobs:
       - name: Unit tests
         run: python -m pytest -q
 
-      # evidence/expect/score belong to W3/W4 and are stubs until those PRs land, so run_all exits
-      # non-zero with a clear "still a stub" message. The step stays non-blocking so the rest of the
-      # pipeline (and the hash artifact below) is exercised on every OS meanwhile. Flip this to a hard
-      # failure once W3 and W4 are merged.
-      - name: End-to-end on the synthetic corpus (stub stages until W3/W4 land)
-        continue-on-error: true
+      # W3/W4 are merged, so the whole pipeline runs on the frozen synthetic fixtures. A failure here
+      # is a real failure: the next step still lists whatever outputs exist so the comparison job has
+      # something to read when a platform breaks.
+      - name: End-to-end on the synthetic corpus
         run: python -m potency.run_all --data tests/fixtures/synthetic --corpus synth
 
       - name: List SHA-256 of every CSV/JSON output
@@ -87,8 +89,8 @@ jobs:
           pattern: output-hashes-*-py3.12
           path: hashes
 
-      # Warn-only for now: the cross-OS hash gate becomes a failure once W3/W4 outputs exist. The
-      # comparison covers Python 3.12 on the three OSes, which is the demo configuration.
+      # Warn-only as instructed in the worker brief. The comparison covers Python 3.12 on the three
+      # OSes, which is the demo configuration; a difference is reported as a ::warning:: annotation.
       - name: Compare
         run: |
           python3 - <<'PY'

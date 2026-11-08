@@ -4,12 +4,17 @@ Covers the three platforms in the `cross-platform-runtime` spec: Windows 10+, ma
 Python >= 3.11. No WSL, bash, make or SSH is needed: every stage is a `python -m` command (design D17).
 Kris takes over on Windows at about 18:00; the 18:00 handover section is at the bottom.
 
+The current `requirements.txt` pins `numpy==2.5.4`, which publishes no Python 3.11 wheel. Use Python 3.12
+for the demo; the code itself supports 3.11, but the install needs the pin relaxed first (tracked as a
+contract change request on this PR).
+
 Replace `hermes-orin` with your corpus name (`swechat-v1`, `synth`, ...) and `derived-hermes-orin-ab12cd34.zip`
 with the bundle you were given.
 
 ## 0. Prerequisites
 
-- Python 3.11 or newer (`python --version`, or `py -3.12 --version` on Windows).
+- Python 3.12 for the current `requirements.txt` pin (`python --version`, or `py -3.12 --version` on
+  Windows). The code supports 3.11, but `numpy==2.5.4` has no 3.11 wheel; use 3.12 until the pin is relaxed.
 - `git`.
 - About 2 GB of free disk and a short path for the clone (`C:\h148`, not a deep `Documents` path).
 
@@ -203,9 +208,9 @@ If a PNG looks empty, confirm the run wrote `out/evidence.csv` first: the chart 
 
 ### A stage says "is still a stub" and `run_all` exits 1
 
-`evidence`, `expect` and `score` are owned by W3/W4 and are stubs until those PRs land. Until then `run_all`
-prints the stub message, still writes `status.png` and `summary.md` from any existing `out/evidence.csv`, and
-exits 1 by design. See the task state below.
+The merged branch has real `evidence`, `expect` and `score` stages, so this message means you are on an older
+checkout or a branch that has not merged W3/W4 yet. Pull `main` (or the branch you were given) and re-run. If a
+stage genuinely has no inputs, `run_all` names the missing files and exits 1 by design.
 
 ### `report: ... missing out/evidence.csv`
 
@@ -221,15 +226,15 @@ ticks boxes there, at merge time. As of this runbook:
 | Group | State |
 |---|---|
 | 0. Data gathering | 0.1-0.2 done; 0.3 (run the source stages on orin) and 0.4 (census gate) pending |
-| 1. Foundation | Done and frozen (`schema`, `io`, `normalize`, fixtures, stage stubs) |
-| 2. Hermes source stages (W1) | In review: `extract`, `census`, `draft_rules`, `bundle`, `privacy` |
-| 3. Claude Code adapter (W2) | In review: adapter plus `corpora.yaml` |
-| 4. Evidence and expectation (W3) | Pending: `evidence.py`, `expect.py` still stubs, so `run_all` exits 1 |
-| 5. Scoring and experiments (W4) | Pending: `score.py` still a stub |
+| 1. Foundation | Done and frozen (`schema`, `io`, `normalize`, fixtures) |
+| 2. Hermes source stages (W1) | Merged to `main`: `extract`, `census`, `draft_rules`, `bundle`, `privacy` |
+| 3. Claude Code adapter (W2) | Merged to `main`: adapter plus `corpora.yaml` |
+| 4. Evidence and expectation (W3) | Merged to `main`: `evidence.py`, `expect.py` |
+| 5. Scoring and experiments (W4) | Merged to `main`: `score.py` |
 | 6. Report, CI, runbook (W5) | This PR: `report.py`, `run_all.py`, the CI matrix and this file |
-| 7. Integration and real data | Pending: merge, real-data run, approved maps, Windows reproduction |
+| 7. Integration and real data | Pending: merge this PR, real-data run, approved maps, Windows reproduction |
 
-Until group 4 lands, `run_all` exits 1 after the stub message and writes no report: `evidence.csv` is that
-stage's output, and the report has nothing to read without it. Once W3 is merged the report runs and the
-fallback demo in design D18 works (status chart plus the evidence section of `summary.md`); once W4 is merged
-the full ranking, strata and experiments appear too. Re-run `run_all` after each merge.
+The merged pipeline is complete: `run_all` verifies checksums, runs `evidence -> expect -> score -> report`,
+and exits 0. The report's optional inputs still degrade to "not computable" notes, so a partial bundle (for
+example evidence only) writes the status chart and the evidence section instead of failing. Re-run `run_all`
+after each merge or bundle refresh.
