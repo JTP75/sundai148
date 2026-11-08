@@ -17,6 +17,7 @@ import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 from potency import normalize, schema
 
@@ -152,7 +153,8 @@ def result_status(content) -> str:
 
 # ---------------------------------------------------------------- read-only snapshot (D12)
 def _open_readonly(db_path: Path) -> sqlite3.Connection:
-    uri = "file:" + Path(db_path).resolve().as_posix() + "?mode=ro"
+    # quote() keeps spaces, '#', '?' and unicode in a Windows or macOS home out of the URI syntax
+    uri = "file:" + quote(Path(db_path).resolve().as_posix(), safe="/:") + "?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     conn.isolation_level = None  # explicit BEGIN/COMMIT so the snapshot is one read transaction
     conn.execute("BEGIN")

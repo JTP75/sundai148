@@ -62,6 +62,14 @@ def _looks_like_blob(text: str) -> bool:
     return False
 
 
+def _blob_token(text: str) -> str | None:
+    """First long hex/base64 token inside a longer string (a leaked hash rarely stands alone)."""
+    for token in re.split(r"[\s\"',:\[\]{}]+", text):
+        if token and _looks_like_blob(token):
+            return token
+    return None
+
+
 def scan_string(name: str, text: str, forbidden=(), hex_check: bool = True) -> None:
     """Raise PrivacyError naming ``name`` when one string value fails the backstop."""
     for label, rx in TOKEN_PATTERNS.items():
@@ -74,17 +82,15 @@ def scan_string(name: str, text: str, forbidden=(), hex_check: bool = True) -> N
     for needle in forbidden:
         if needle and needle in text:
             raise PrivacyError(f"{name}: forbidden string in an exported value")
-    if hex_check and _looks_like_blob(text.strip()):
+    if hex_check and (_looks_like_blob(text.strip()) or _blob_token(text)):
         raise PrivacyError(f"{name}: long hex/base64 blob in an exported value")
 
 
 def scan_text(name: str, text: str, forbidden=(), hex_check: bool = False) -> None:
     """Raw scan of a whole exported file (any format)."""
     scan_string(name, text, forbidden=forbidden, hex_check=False)
-    if hex_check:
-        for token in re.split(r"[\s\"',:\[\]{}]+", text):
-            if token and _looks_like_blob(token):
-                raise PrivacyError(f"{name}: long hex/base64 blob in an exported file")
+    if hex_check and _blob_token(text):
+        raise PrivacyError(f"{name}: long hex/base64 blob in an exported file")
 
 
 def _walk_json(obj, key: str | None = None):
