@@ -243,6 +243,30 @@ def test_potency_columns(tmp_path):
     assert header.split(",") == schema.OUTPUT_COLUMNS["potency.csv"]
 
 
+def test_prior_is_fitted_on_ranked_skills_only(tmp_path):
+    """A 1-load skill must not set the prior mean or widen tau2, though it is still shrunk."""
+    _, rows, _, detail = scored(tmp_path)
+    ranked_lifts = [num(r["lift"]) for r in rows if r["ranked"] == "true"]
+    prior = detail["ranking"]["prior"]
+    assert prior["n_skills"] == 5 and prior["n_prior_skills"] == 3
+    assert prior["mean"] == pytest.approx(sum(ranked_lifts) / len(ranked_lifts), abs=1e-5)
+    # The two 1-load skills sit far above the ranked mean (+0.86/+0.88) and would drag it up.
+    assert prior["mean"] < 0.5
+
+
+def test_single_load_skill_is_shrunk_toward_ranked_prior():
+    stats = {
+        "ranked": score.SkillStats("ranked", [0.05, 0.06, 0.04, 0.05, 0.05]),
+        "one-load": score.SkillStats("one-load", [0.85]),
+    }
+    mu, tau2, var_i = score._fit_prior(stats)
+    assert mu == pytest.approx(0.05)
+    assert tau2 == 0.0  # one ranked skill: no between-skill spread to estimate
+    shrunk, _, _ = score._shrink(stats)
+    assert shrunk["one-load"] == pytest.approx(0.05)
+    assert shrunk["ranked"] == pytest.approx(0.05)
+
+
 def test_popularity_and_bloat_reported(tmp_path):
     _, _, _, detail = scored(tmp_path)
     popularity = detail["popularity"]

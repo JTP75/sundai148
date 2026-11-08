@@ -214,38 +214,13 @@ def _with_means(buckets: dict) -> dict:
 
 # ------------------------------------------------------------------ S3: paired runs
 def _pair_arms(inputs) -> dict[str, dict[str, dict]]:
-    """``pair_id -> {arm: session row}`` for pairs that hold both arms.
-
-    Uses the sessions table as a list: the frozen fixture gives both arms the same ``session_id``
-    (``with_skill`` and ``without_skill`` both truncate to ``with``), so a dict keyed by session id
-    would drop one arm. Their step rows collide too and are told apart by timestamp.
-    """
+    """``pair_id -> {arm: session}`` for pairs that hold both arms."""
     pairs: dict[str, dict[str, dict]] = defaultdict(dict)
-    for row in inputs.session_rows:
-        if row["pair_id"]:
-            pairs[row["pair_id"]][row["pair_arm"]] = row
+    for session in inputs.sessions.values():
+        if session["pair_id"]:
+            pairs[session["pair_id"]][session["pair_arm"]] = session
     return {p: arms for p, arms in pairs.items()
             if "with_skill" in arms and "without_skill" in arms}
-
-
-def _arm_rows(inputs, arms: dict[str, dict], arm: str) -> list[dict]:
-    row, other = arms[arm], arms["without_skill" if arm == "with_skill" else "with_skill"]
-    rows = _rows(inputs, row["session_id"])
-    if row["session_id"] != other["session_id"]:
-        return rows
-    starts = sorted((("with_skill", arms["with_skill"]["start_ts"]),
-                     ("without_skill", arms["without_skill"]["start_ts"])), key=lambda x: x[1])
-    out = []
-    for st in rows:
-        if st["ts"] is None:
-            continue
-        owner = None
-        for name, start in starts:
-            if start <= st["ts"]:
-                owner = name
-        if owner == arm:
-            out.append(st)
-    return out
 
 
 def _paired_runs(inputs, scores, sets: dict[str, set[str]]) -> dict:
@@ -266,13 +241,13 @@ def _paired_runs(inputs, scores, sets: dict[str, set[str]]) -> dict:
             continue
         diffs = []
         for pair_id, arms in sorted(complete.items()):
-            with_sid = arms["with_skill"]["session_id"]
+            with_sid, without_sid = arms["with_skill"]["session_id"], arms["without_skill"]["session_id"]
             load = next((ld for ld in inputs.loads.values()
                          if ld["skill"] == skill and ld["session_id"] == with_sid), None)
             if load is None:
                 continue
-            with_hit = window_hit(_arm_rows(inputs, arms, "with_skill"), targets, load["step"])
-            without_hit = window_hit(_arm_rows(inputs, arms, "without_skill"), targets, load["step"])
+            with_hit = window_hit(_rows(inputs, with_sid), targets, load["step"])
+            without_hit = window_hit(_rows(inputs, without_sid), targets, load["step"])
             if with_hit is None or without_hit is None:
                 continue
             diffs.append(with_hit - without_hit)
