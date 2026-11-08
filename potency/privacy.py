@@ -58,7 +58,9 @@ def _looks_like_blob(text: str) -> bool:
     if HEX_RE.fullmatch(text):
         return True
     if BLOB_RE.fullmatch(text):
-        return any(ch.isdigit() for ch in text) and any(ch.isupper() or ch in "+/_-=" for ch in text)
+        # Random tokens are digit-dense; identifiers like `mcp__plugin_context7_context7__query-docs` are not.
+        digits = sum(ch.isdigit() for ch in text)
+        return digits / len(text) >= 0.1 and any(ch.isupper() or ch in "+/_-=" for ch in text)
     return False
 
 
