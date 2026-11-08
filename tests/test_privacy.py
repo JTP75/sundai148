@@ -156,3 +156,15 @@ def test_private_arguments_are_decoded_nowhere(exported):
     blob = json.dumps(steps)
     for needle in EXPECTED["must_not_appear_anywhere"]:
         assert needle not in blob
+
+
+def test_tool_identifiers_are_not_blobs():
+    from potency import privacy
+
+    for ok in ("mcp__plugin_context7_context7__query-docs", "mcp__claude_ai_icd-10_codes__search_codes",
+               "terminal: nemotron-terminal-8b-eval-terminal-bench"):
+        privacy.scan_string("x", ok)
+    import pytest
+
+    with pytest.raises(privacy.PrivacyError):
+        privacy.scan_string("x", "aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5bC7dE9")
