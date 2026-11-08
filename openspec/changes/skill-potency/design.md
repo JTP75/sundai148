@@ -24,6 +24,7 @@
 
 **Goals:**
 - One command per stage, end to end, with deterministic outputs that are identical on Windows, macOS and Linux.
+- A per-rule evidence layer (D18) that is a complete demo on its own, with lift and ranking built on top.
 - The headline number stays honest when a skill only prescribes what the agent already does: lift ≈ 0 in that case.
 - New corpora plug in through an adapter without changes to analysis code.
 
@@ -64,7 +65,7 @@
   - next-command **hit-rate@{1,5,10}** on first occurrences, overall and by frequency decile, with step and session counts.
 
   If the model does not beat popularity, the report says so, and Â is effectively the base rate.
-- **Alternatives:** BehaviorGPT as Â (stretch S3, same interface); an LLM judge (rejected: costly and itself in-distribution).
+- **Rejected alternatives:** BehaviorGPT as Â (a retail model; removed from the project) and an LLM judge (costly, and itself in-distribution).
 
 **D4. Specificity weighting.**
 - w(c) = −log(smoothed base rate of c in train no-load windows).
@@ -82,13 +83,13 @@
 
 Lift is reported per stratum and per corpus. **Novel + local** supplies headline number 1. For public corpora most skills are public, so the stratum split matters most there.
 
-**D7. Natural experiments (stretch, in order).**
+**D7. Natural experiments (in scope; each reports "not computable" when its inputs are missing).**
 - **S1 Pre/post creation.** For skills with a creation date and a task key:
   - Compare the task's adherence to the skill's commands before vs after creation.
   - Use difference-in-differences against keyed tasks that never got a skill.
   - Split agent-touched vs none (D16).
 - **S2 Edit-response.** For each recorded change that adds or removes a signature: does the command's post-load rate move in the matching direction, relative to unchanged commands in the same skill?
-- **S3 Paired-run validation.** If a public corpus has paired runs with and without the skill, compare observational lift to the experimental difference on the same skills. This directly checks the endogeneity bias, and it is the highest-value stretch goal.
+- **S3 Paired-run validation.** If a public corpus has paired runs with and without the skill, compare observational lift to the experimental difference on the same skills. This directly checks the endogeneity bias, and it is the most valuable of these analyses.
 - **Trigger split.** Report lift separately for `instructed`, `chosen` and `preloaded` loads.
 
 **D8. Event ordering and leakage guards.**
@@ -131,15 +132,21 @@ Lift is reported per stratum and per corpus. **Novel + local** supplies headline
 All are fixed before any adherence number is computed.
 
 **D11. Runtime layout.**
-- **Per corpus, on the source machine:** `python -m potency.extract --corpus <name>` and `python -m potency.census --corpus <name>`. They write the intermediate format (D12) plus `manifest.json` and `census.json`.
+- **Per corpus, on the source machine**, stdlib only, so orin needs no installs:
+  - `python -m potency.extract --corpus <name> --out <dir>` writes the intermediate format (D12) and `manifest.json`;
+  - `python -m potency.census --corpus <name> --out <dir>` writes `census.json`;
+  - `python -m potency.draft_rules --corpus <name> --out <dir>` writes the draft rule map (D13).
+- `python -m potency.bundle --in <dir> --out <zip>` packs derived files, `manifest.json` and a SHA-256 list into `derived-<corpus>-<manifest hash>.zip`. Justin shares the zip through Google Drive. Kris unzips it into the data dir (`Expand-Archive` on Windows).
 - **Anywhere, on derived files only:**
+  - `python -m potency.evidence` writes `evidence.csv` (D18);
   - `python -m potency.expect` writes `expect_eval.json`;
-  - `python -m potency.score` writes `potency.csv` and `strata.csv`;
-  - `python -m potency.report` writes `potency.png` and `summary.md`.
-- Optional `python -m potency.bgpt_expect` is the S3 alternative Â behind the same interface.
+  - `python -m potency.score` writes `potency.csv`, `strata.csv` and `experiments.json`;
+  - `python -m potency.report` writes `potency.png`, `status.png` and `summary.md`;
+  - `python -m potency.run_all` runs evidence → expect → score → report.
+- The data session runs the source-machine stages. Raw logs and skill text never leave the source machine.
 
 **D12. Multi-corpus intake through a harness-neutral intermediate format.**
-- Each corpus has an adapter that emits the same tables:
+- Each corpus has an adapter that emits the same tables, as utf-8 JSONL (stdlib-writable on source machines):
   - `steps` (corpus, session, step, source offset, signature, kind, status, batch id);
   - `loads` (skill, step, trigger, flags, version id);
   - `skill_versions` (skill, version id, valid-from, prescribed set with roles, version source);
@@ -160,12 +167,19 @@ All are fixed before any adherence number is computed.
   - the program frequency list.
 - **Eligibility bar:** ≥100 loads and ≥10 skills with ≥5 loads, *or* paired with/without-skill runs. Smaller corpora are reported but not ranked on their own.
 
-**D13. Prescription roles and audit.**
-- Skills with ≥5 raw loads in any corpus get a hand-audited map from Justin, tagging each command `required`, `example` or `avoid`.
-- Only `required` counts toward A. Matches on `avoid` are reported separately.
-- The map may prescribe tool names (e.g. `web_search`) for skills that are mostly prose.
-- All other skills use auto-extraction from code blocks and inline backticks, flagged `auto`, and treated as `required`.
-- The audit maps and the public/local program map are committed to the repo before any adherence is computed.
+**D13. Rule map: agent-drafted, Justin-approved.**
+- **Drafting:** an agent on the source machine drafts a rule map from each loaded skill's versioned text. Skill text stays there; the map holds only signatures, tool names, labels and short rule ids. Each rule carries:
+  - `rule_id`;
+  - skill and version id;
+  - instruction location (section heading index);
+  - obligation type: `required`, `conditional`, `optional`, `example` or `avoid`;
+  - applicability predicate: observable context signatures or task key, or `unknown`;
+  - observable predicate: a set of acceptable signatures;
+  - allowed alternatives.
+- **Approval:** Justin reviews and edits the map, and approval is recorded in the map file. It is committed before any adherence is computed, together with the public/local program map.
+- **Counting:** only approved `required` rules, and `conditional` rules whose applicability holds, count toward A. `avoid` matches are reported separately. `optional` and `example` rules are not scored.
+- **Unaudited skills:** if a skill has no approved map, auto-extraction from code blocks and inline backticks applies. Every command is `required` with applicability `unknown`, and the skill is flagged `auto`.
+- **Prose skills:** the map may use tool names (e.g. `web_search`) as observable predicates.
 
 **D14. Skill version at load time.** Version sources, in priority order:
 1. Ledger replay, when `before`/`after` hold full text.
@@ -190,7 +204,7 @@ Without a key, S1 is "not computable" for that corpus.
 
 **D17. Cross-platform runtime (Windows, macOS, Linux).**
 - **Python and packaging:**
-  - Pure Python ≥3.11. Dependencies are pinned in `requirements.txt` and limited to wheels available on all three OSes (pandas, pyarrow, numpy, scikit-learn, matplotlib with the Agg backend, pyyaml).
+  - Pure Python ≥3.11. Dependencies are pinned in `requirements.txt` and limited to wheels available on all three OSes (pandas, numpy, scikit-learn, matplotlib with the Agg backend, pyyaml). Source-machine stages use the stdlib only.
 - **Entry points and paths:**
   - Every stage runs as `python -m potency.<stage>`. No bash/Makefile is required; any shell helper is optional.
   - Paths use `pathlib`. There are no hard-coded `~/` or `/tmp` paths; output and data dirs come from CLI args or `POTENCY_DATA_DIR`. No symlinks.
@@ -201,6 +215,54 @@ Without a key, S1 is "not computable" for that corpus.
   - Seeded RNG, sorted iteration and fixed float formatting, so outputs match byte for byte across OSes (verified by hash).
   - Source extractors run on the source machine. Analysis stages need only derived files and no SSH, so Windows needs neither SSH nor WSL.
 - **Verification:** a GitHub Actions matrix (ubuntu, macos, windows) runs unit tests and the synthetic end-to-end run on each push.
+
+**D18. Evidence layer and status contract (hybrid with the model-free audit in `docs/research/adversarial-spec-review.md`).** Each (scorable load × rule) pair becomes one row in `evidence.csv` with one status:
+- `supported_agreement`: the rule's observable predicate (or an allowed alternative) was attempted within the window after a successful load.
+- `no_observed_agreement`: applicability is known to hold, the window is intact (not `incomplete`), and no matching step was found. It means only that; it never means "ignored."
+- `insufficient_evidence`: applicability is unknown, the version is `version_core` and the rule is not in the core, ordering is ambiguous (`same_batch`), the window is incomplete, or the rule is unsupported.
+- `not_applicable`: the applicability predicate is known to be false. These rows are excluded from denominators.
+
+Each row carries: pseudonymous episode id, corpus, skill, version id, rule id, window bounds, status, reason code, and the step ids of the matching evidence. Unknown is never mapped to failure.
+
+A is computed only from `supported_agreement` and `no_observed_agreement` rows. Lift and ranking (D2, D9) build on this layer. **Fallback demo:** if the expectation model or support fails, the evidence table and the per-skill status chart are the demo.
+
+**D19. Module layout and worker contracts (for the parallel build).**
+- **Package layout:**
+
+| Module | Purpose |
+|---|---|
+| `potency/schema.py` | Single source of truth for table columns, types and enums |
+| `potency/io.py` | utf-8 JSONL/CSV read and write, deterministic float formatting, sorted keys |
+| `potency/normalize.py` | D1 signature normalizer |
+| `potency/adapters/hermes.py` | Hermes corpus adapter |
+| `potency/adapters/<public>.py` | One adapter per public corpus |
+| `potency/extract.py`, `census.py`, `draft_rules.py`, `bundle.py` | Source-machine stages |
+| `potency/evidence.py` | D18 evidence layer |
+| `potency/expect.py` | D3 expectation model |
+| `potency/score.py` | D2, D4–D7, D9 |
+| `potency/report.py` | Charts and summary |
+| `potency/run_all.py` | Runs the analysis stages in order |
+| `tests/fixtures/synthetic/` | Generated by `tests/make_fixtures.py`, seed 148 |
+
+- **Ownership:** `schema.py`, `io.py` and the synthetic fixtures are built first, by the orchestrator, and frozen. Each worker owns one module group plus its tests, and changes the shared modules only through the orchestrator.
+- **Fixtures:** the synthetic corpus encodes every evidence-status case, plus a "habit" skill and a "novel" skill with known expected lift. Each module's tests pass against it on its own.
+- **Interfaces:** every stage reads and writes only the D12 tables and named output files in a data dir. There are no in-memory cross-module calls except into `schema`, `io` and `normalize`.
+
+**D20. Claims.**
+- **Supported:**
+  - "for this version, episode and rule, these trace events support agreement";
+  - "no matching evidence in the declared applicable window";
+  - "evidence is insufficient";
+  - lift over expected adherence, as an upper bound;
+  - descriptive counts.
+- **Not supported:**
+  - skill quality or usefulness;
+  - causal influence beyond D7;
+  - task success;
+  - "ignored";
+  - whole-procedure compliance;
+  - overlooked skills (the audit covers only loaded episodes, a selection-biased sample);
+  - deletion or pruning recommendations.
 
 ## Risks / Trade-offs
 

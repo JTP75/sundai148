@@ -1,12 +1,12 @@
-# Sundai Hack 148: skill potency with BehaviorGPT
+# Sundai Hack 148: skill potency
 
-Do agents actually follow the skills they load? This project treats an agent's tool calls as a behavior history and measures each skill's **lift**: how much more often the agent runs the skill's prescribed commands after loading it than a next-action model predicts it would have anyway. Controls (specificity weighting, placebo skills, familiarity strata, pre/post skill creation) keep the result from reducing to command popularity or what the model already knows. BehaviorGPT (Unbox AI) is an optional alternative expectation model. The output is a ranking of "loaded but inert" skills. The first corpus is Hermes (pacel-orin `state.db`: 254 skill loads, 68 skills). More corpora, including public ones, enter through a harness-neutral intake with a counts-only census. Analysis runs on Windows, macOS and Linux.
+Do agents actually follow the skills they load, beyond what they would do anyway? This project treats an agent's tool calls as a behavior history and builds two layers per skill load. First, a model-free **evidence layer**: for each rule in the skill, does the trace support agreement, show no matching evidence, or lack the evidence to tell? Second, **lift**: agreement minus what a next-action model predicts the agent would have done without the skill. Controls (specificity weighting, placebo skills, familiarity strata, pre/post skill creation, edit-response, paired runs) keep the result from reducing to command popularity or what the model already knows. The first corpus is Hermes (pacel-orin `state.db`: 254 skill loads, 68 skills). Public corpora enter through a harness-neutral intake with a counts-only census. Analysis runs on Windows, macOS and Linux from a checksummed derived-data bundle.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `openspec/changes/behaviorgpt-skill-potency/` | Active OpenSpec change: proposal, specs, design, tasks |
+| `openspec/changes/skill-potency/` | Active OpenSpec change: proposal, specs, design, tasks |
 | `docs/handoffs/` | Session handoffs (`handoff.md` is superseded by the OpenSpec change; `handoff-pc.md` is the log-inventory task) |
 | `docs/research/` | Landscape review, cross-machine agent log inventory, adversarial spec review |
 | `AGENTS.md` | How agents should work here, including installing OpenSpec |

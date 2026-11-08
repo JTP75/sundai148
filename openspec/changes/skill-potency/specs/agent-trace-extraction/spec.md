@@ -67,16 +67,27 @@ A load SHALL be flagged `version_unknown` only when no source applies.
 - **WHEN** neither replay applies
 - **THEN** the prescribed set is the stable core and the load is flagged `version_core`
 
-### Requirement: Prescription roles
-Each prescribed command SHALL carry a role: `required`, `example` or `avoid`. Roles for audited skills SHALL come from the committed hand-audited map, which may also prescribe tool names. All other skills SHALL use auto-extraction from code blocks and inline backticks, with every command tagged `required` and the skill flagged `auto`. A skill with no extractable command SHALL be recorded with an empty set and flagged not scorable.
+### Requirement: Rule map with obligation types
+Each rule SHALL carry: rule id, skill, version id, obligation type (`required`, `conditional`, `optional`, `example`, `avoid`), applicability predicate (or `unknown`), observable predicate, and allowed alternatives. Rules SHALL come from the approved rule map when one exists, and otherwise from auto-extraction (see scenarios).
 
-#### Scenario: Audited skill with an example block
-- **WHEN** the audit map tags `terminal: gog auth login` as `example` for `gog-cli`
-- **THEN** that command does not count toward adherence for `gog-cli` loads
+#### Scenario: Example block in an approved map
+- **WHEN** the approved map types `terminal: gog auth login` as `example` for `gog-cli`
+- **THEN** that rule is not scored for `gog-cli` loads
 
 #### Scenario: Skill without commands
 - **WHEN** an unaudited SKILL.md has no code blocks or recognizable commands
-- **THEN** the load is recorded with an empty prescribed set and flagged not scorable
+- **THEN** the load is recorded with an empty rule set and flagged not scorable
+
+#### Scenario: Unaudited skill
+- **WHEN** a skill has no approved map
+- **THEN** rules come from its code blocks and inline backticks, each typed `required` with applicability `unknown`, and the skill is flagged `auto`
+
+### Requirement: Agent-drafted, human-approved rule map
+A drafting stage on the source machine SHALL produce a draft rule map from versioned skill text, exporting no skill text. A human reviewer SHALL approve or edit each rule, and the approval SHALL be recorded in the map file. No adherence SHALL be computed from unapproved rules, except as `auto` rules.
+
+#### Scenario: Draft not yet approved
+- **WHEN** the scoring stage runs and a drafted rule lacks approval
+- **THEN** the rule is treated as `auto` and the skill is flagged `auto`
 
 ### Requirement: Maintenance and repeat loads flagged
 A load SHALL be flagged `maintenance` when `skill_manage` or a write to that skill's files on the same skill follows within N steps. It SHALL be flagged `repeat` when the same skill was already loaded earlier in the session.

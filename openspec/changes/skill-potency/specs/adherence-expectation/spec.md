@@ -62,10 +62,3 @@ The system SHALL report a calibration curve (10 bins) for the expectation model 
 #### Scenario: Calibration output
 - **WHEN** the evaluation completes
 - **THEN** `expect_eval.json` contains per-bin predicted and observed rates and bin counts
-
-### Requirement: Pluggable expectation backends
-The expected-adherence interface SHALL accept alternative backends (e.g. BehaviorGPT) that yield per-command probabilities for a context, evaluated with the same report. No backend SHALL send user ids or raw message text to an external service.
-
-#### Scenario: Optional external backend
-- **WHEN** an external backend is used
-- **THEN** it receives only signatures and session-relative order, and its results appear as a separate column in the evaluation report

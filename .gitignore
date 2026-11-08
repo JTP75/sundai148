@@ -6,3 +6,5 @@ __pycache__/
 *.sqlite
 data/
 .DS_Store
+derived-*.zip
+data/

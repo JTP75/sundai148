@@ -14,7 +14,7 @@ Each `required` prescribed command SHALL carry weight w(c) = −log of its smoot
 - **THEN** its set contains only `terminal: gog tasks list`
 
 ### Requirement: Per-load lift
-For each scorable load (not `maintenance`, `repeat`, `same_batch`-only, or `version_unknown`), the system SHALL compute observed adherence A, the specificity-weighted share of the `required` set attempted within the next N steps, and lift = A − Â, where Â comes from the expectation model of the same corpus.
+For each scorable load (not `maintenance`, `repeat`, or `version_unknown`), the system SHALL compute observed adherence A as the specificity-weighted share of the load's evidence rows with status `supported_agreement`, among rows with status `supported_agreement` or `no_observed_agreement`. It SHALL compute lift = A − Â, where Â comes from the same corpus's expectation model over the same rules. A load with no determinate rows SHALL have no lift and SHALL be counted as insufficient.
 
 #### Scenario: Skill prescribes habits
 - **WHEN** every prescribed command is one the agent runs at the same rate without the skill

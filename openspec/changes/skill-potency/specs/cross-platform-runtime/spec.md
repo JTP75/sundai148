@@ -49,7 +49,7 @@ A GitHub Actions workflow SHALL run unit tests and the synthetic end-to-end run 
 - **THEN** the windows-latest job fails
 
 ### Requirement: Handover runbook
-The repo SHALL contain `docs/runbook.md` with copy-paste setup and run commands for PowerShell and for bash/zsh, where derived data lives, how to regenerate the report, and the current state of tasks.
+The repo SHALL contain `docs/runbook.md` with copy-paste setup and run commands for PowerShell and for bash/zsh, how to unpack a derived-data bundle, how to regenerate the report, and the current state of tasks.
 
 #### Scenario: 18:00 handover
 - **WHEN** Kris starts on Windows with only the repo and the derived-data location

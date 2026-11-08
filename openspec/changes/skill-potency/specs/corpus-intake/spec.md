@@ -14,7 +14,7 @@ Every corpus SHALL have an entry in `corpora.yaml` stating its name, harness, ag
 - **THEN** its registry entry includes license and URL before any of its data is used
 
 ### Requirement: Harness-neutral intermediate format
-Each adapter SHALL emit the same tables (`sessions`, `steps`, `loads`, `skill_versions`, `provenance`) with the same columns and types. Analysis stages SHALL read only these tables and SHALL contain no harness-specific code.
+Each adapter SHALL emit the same tables (`sessions`, `steps`, `loads`, `skill_versions`, `provenance`) as utf-8 JSONL, with the columns and types defined in `potency/schema.py`. Source-machine stages SHALL use only the Python standard library. Analysis stages SHALL read only these tables and SHALL contain no harness-specific code.
 
 #### Scenario: Second harness
 - **WHEN** an OpenCode adapter is added
@@ -62,3 +62,15 @@ A corpus SHALL be ranked on its own only if it has ≥100 scorable loads and ≥
 #### Scenario: Small corpus
 - **WHEN** a corpus has 44 loads
 - **THEN** it appears in the census and descriptive tables but gets no ranking chart
+
+### Requirement: Portable derived-data bundle
+A bundling stage SHALL pack a corpus's derived files, `manifest.json`, `census.json` and a SHA-256 checksum list into one zip named `derived-<corpus>-<manifest hash>.zip`. The analysis stages SHALL verify the checksums before reading an unpacked bundle. Bundles of private corpora SHALL NOT be committed to the repository.
+
+#### Scenario: Handover by file share
+- **WHEN** Kris unpacks a bundle shared through Google Drive into his data dir on Windows
+- **THEN** the analysis stages verify the checksums and run without access to the source machine
+
+#### Scenario: Corrupted bundle
+- **WHEN** a file in an unpacked bundle does not match its checksum
+- **THEN** the analysis stage stops with an error naming the file
+
