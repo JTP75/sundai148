@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+*.parquet
+*.db
+*.sqlite
+data/
+.DS_Store
