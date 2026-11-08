@@ -217,7 +217,7 @@ Without a key, S1 is "not computable" for that corpus.
 
 **D17. Cross-platform runtime (Windows, macOS, Linux).**
 - **Python and packaging:**
-  - Pure Python ≥3.11. Dependencies are pinned in `requirements.txt` and limited to wheels available on all three OSes (pandas, numpy, scikit-learn, matplotlib with the Agg backend, pyyaml). Source-machine stages use the stdlib only.
+  - Pure Python ≥3.12 (the pinned numpy/scipy publish no 3.11 wheels). Dependencies are pinned in `requirements.txt` and limited to wheels available on all three OSes (pandas, numpy, scikit-learn, matplotlib with the Agg backend, pyyaml). Source-machine stages use the stdlib only.
 - **Entry points and paths:**
   - Every stage runs as `python -m potency.<stage>`. No bash/Makefile is required; any shell helper is optional.
   - Paths use `pathlib`. There are no hard-coded `~/` or `/tmp` paths; output and data dirs come from CLI args or `POTENCY_DATA_DIR`. No symlinks.

@@ -67,7 +67,7 @@ Out of scope:
 
 ## Impact
 
-- **Dependencies:** Python ≥3.11. Pinned pandas, numpy, scikit-learn, matplotlib (Agg backend) and pyyaml, all with wheels for Windows, macOS and Linux. Source-machine stages use the stdlib only.
+- **Dependencies:** Python ≥3.12 (numpy/scipy pins have no 3.11 wheels). Pinned pandas, numpy, scikit-learn, matplotlib (Agg backend) and pyyaml, all with wheels for Windows, macOS and Linux. Source-machine stages use the stdlib only.
 - **External services:** none at runtime. GitHub Actions runs the CI matrix. Google Drive (manual) carries the bundles.
 - **Data:** private sources (`~/.hermes/state.db`, `.usage.json`, `.curator_ledger.jsonl` on pacel-orin) are read read-only on their machine, and only allowlisted derived fields leave it. Public corpora are used under their recorded licenses.
 - **People:**
