@@ -90,16 +90,16 @@ def build(dest) -> dict:
     for (cat, name), body in SKILLS.items():
         p = skills_dir / cat / name / "SKILL.md"
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(body, encoding="utf-8")
-    (skills_dir / ".usage.json").write_text(json.dumps(USAGE), encoding="utf-8")
+        p.write_bytes(body.encode("utf-8"))  # exact bytes: write_text would emit CRLF on Windows and break hashes
+    (skills_dir / ".usage.json").write_bytes((json.dumps(USAGE)).encode("utf-8"))
     ledger = [
         {"id": 1, "ts": "2026-10-02T00:00:00Z", "actor": "curator", "action": "patch", "skill": "gog-cli", "evidence": "x",
          "before": [{"path": "SKILL.md", "sha256": _sha("old")}],
          "after": [{"path": "SKILL.md", "sha256": _sha(SKILLS[("google", "gog-cli")])}]},
     ]
-    (skills_dir / ".curator_ledger.jsonl").write_text("\n".join(json.dumps(r) for r in ledger) + "\n", encoding="utf-8")
+    (skills_dir / ".curator_ledger.jsonl").write_bytes(("\n".join(json.dumps(r) for r in ledger) + "\n").encode("utf-8"))
     (home / "cron").mkdir(parents=True, exist_ok=True)
-    (home / "cron" / "jobs.json").write_text(json.dumps(CRON_JOBS), encoding="utf-8")
+    (home / "cron" / "jobs.json").write_bytes((json.dumps(CRON_JOBS)).encode("utf-8"))
 
     db_path = home / "state.db"
     conn = sqlite3.connect(db_path)

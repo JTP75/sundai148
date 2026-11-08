@@ -1,7 +1,7 @@
 name: ci
 
 # Cross-platform runtime (design D17, tasks 6.2): unit tests plus the synthetic end-to-end run on
-# Ubuntu, macOS and Windows for Python 3.11 and 3.12, then a warn-only comparison of the SHA-256 of
+# Ubuntu, macOS and Windows for Python 3.12 and 3.13, then a warn-only comparison of the SHA-256 of
 # every CSV/JSON output across the three operating systems.
 
 on:
@@ -17,15 +17,11 @@ jobs:
     name: ${{ matrix.os }} / py${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
-    # The foundation pins numpy==2.5.4, which requires Python >=3.12, so `pip install -r requirements.txt`
-    # cannot resolve on 3.11. The 3.11 legs stay in the matrix as a visible signal but do not block until
-    # requirements.txt is relaxed (see the PR's contract change requests). Flip this off when it is fixed.
-    continue-on-error: ${{ matrix.python-version == '3.11' }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
 

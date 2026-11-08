@@ -1,20 +1,16 @@
 # Runbook: run the potency pipeline on any OS
 
 Covers the three platforms in the `cross-platform-runtime` spec: Windows 10+, macOS 13+ and Linux, with
-Python >= 3.11. No WSL, bash, make or SSH is needed: every stage is a `python -m` command (design D17).
+Python >= 3.12. No WSL, bash, make or SSH is needed: every stage is a `python -m` command (design D17).
 Kris takes over on Windows at about 18:00; the 18:00 handover section is at the bottom.
-
-The current `requirements.txt` pins `numpy==2.5.4`, which publishes no Python 3.11 wheel. Use Python 3.12
-for the demo; the code itself supports 3.11, but the install needs the pin relaxed first (tracked as a
-contract change request on this PR).
 
 Replace `hermes-orin` with your corpus name (`swechat-v1`, `synth`, ...) and `derived-hermes-orin-ab12cd34.zip`
 with the bundle you were given.
 
 ## 0. Prerequisites
 
-- Python 3.12 for the current `requirements.txt` pin (`python --version`, or `py -3.12 --version` on
-  Windows). The code supports 3.11, but `numpy==2.5.4` has no 3.11 wheel; use 3.12 until the pin is relaxed.
+- Python 3.12 or newer (`python --version`, or `py -3.12 --version` on Windows). The pinned numpy and scipy
+  publish no Python 3.11 wheels.
 - `git`.
 - About 2 GB of free disk and a short path for the clone (`C:\h148`, not a deep `Documents` path).
 

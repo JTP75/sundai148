@@ -7,7 +7,7 @@ Lets any team member run the analysis stages on Windows, macOS or Linux with the
 ## ADDED Requirements
 
 ### Requirement: Supported platforms
-Every analysis stage (expect, score, report, and the synthetic end-to-end run) SHALL run on Windows 10+, macOS 13+ and Linux with Python ≥3.11. It SHALL need only `pip install -r requirements.txt`, with no WSL, bash, make or SSH.
+Every analysis stage (expect, score, report, and the synthetic end-to-end run) SHALL run on Windows 10+, macOS 13+ and Linux with Python ≥3.12. It SHALL need only `pip install -r requirements.txt`, with no WSL, bash, make or SSH.
 
 #### Scenario: Fresh Windows machine
 - **WHEN** a user on Windows clones the repo, creates a venv and installs `requirements.txt`
