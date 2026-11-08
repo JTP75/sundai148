@@ -1,16 +1,20 @@
-# Adversarial review: BehaviorGPT skill-potency specification
+# Adversarial review: skill-assessment scope and model choice
 
-Reviewed 2026-11-08 against `main` at `5168c71e74c71ddc7f0aaeefbb698418022db66b`.
+Second pass, 2026-11-08, against `main` at `5168c71e74c71ddc7f0aaeefbb698418022db66b`. The upstream specification is unchanged since the first review. This update retains the ten valid findings and reconsiders the approach after the user's decision: "We dont need to use behaviorgpt if its not optimal". No method has been established optimal.
 
 ## Decision
 
-**Conditional go for an exploratory demo; no-go for the current claim that this measures a skill's influence on agent behavior or identifies skills to prune.** The proposed calculation measures BehaviorGPT's response to adding a skill-name/description event. Observed command agreement is a separate measurement. Neither establishes usefulness, successful execution, or causal influence.
+**Recommend a bounded, model-free evidence audit as the first demo; keep prediction optional.** Start with 3-5 skills only if a small pilot establishes that their requirements and historical exposure are observable. Produce rule-level evidence and explicit unknowns, not a usefulness score or cleanup recommendation. Fall back to fewer skills or a clearly synthetic demonstration when real data cannot support the audit. This is a recommendation, not an implemented scope change.
+
+**No-go for causal potency, general skill quality, or automated pruning claims.** The current calculation measures BehaviorGPT's response to adding a skill-name/description event. Observed command agreement is separate. Neither establishes usefulness, successful execution, or causal influence. Removing the model removes infrastructure work, not these validity problems.
 
 The checkout contains planning artifacts and agent workflow files, with no pipeline implementation, dependency manifest, extracted dataset, or evaluation outputs. No private source data, remote-machine access, API key, quota, inference behavior, latency, or cost was verified during this review. All findings below concern the specification; empirical failure modes are identified as risks rather than observed results. No dependencies or inference workloads were run.
 
 References below are repository-relative paths and line numbers at the reviewed commit. `active/` abbreviates `openspec/changes/behaviorgpt-skill-potency/` only within this document.
 
-## Prioritized findings
+## Retained findings about the current active specification
+
+Findings 1-10 remain valid against the unchanged sources. API/probability/calibration findings apply only if that experiment is retained; they are not prerequisites for the recommended model-free core. Findings about exposure, matching, privacy, missingness, and sample support also apply without a model. The fixes below are conditional recommendations, not a requirement to build every proposed component.
 
 ### 1. P1: The estimand does not support the influence claim
 
@@ -24,7 +28,7 @@ The added event contains the skill name and description, not the loaded instruct
 
 **Evidence:** `active/design.md:37,45`; `active/specs/behavior-scoring/spec.md:17-21`.
 
-D5 samples catalog items but does not say to exclude the top-100 head or exclude forced targets from the sampling estimate. This can double-count head mass or bias the tail. It assumes 100 head items even for smaller catalogs and assumes all prescribed targets plus 99 reference items fit one response. Independent pre/post samples can change a small shift's sign. A filtered target score alone does not give its exact global rank.
+D5 samples catalog items but does not say to exclude the top-100 head or keep forced target retrieval separate from the random sample. This can double-count head mass or bias the tail. A target legitimately drawn in the uniform sample can remain in that sample; forced insertion must not increase its sampling weight. D5 assumes 100 head items even for smaller catalogs and assumes all prescribed targets plus 99 reference items fit one response. Independent pre/post samples can change a small shift's sign. A filtered target score alone does not give its exact global rank.
 
 The cache key `(catalog_id, history hash, call kind)` also omits target/filter IDs, limit, offset, and other request settings: different filtered queries for the same history can collide. The provider's reference implementation includes these fields in its key, excludes head items from tail estimation, and estimates ranks outside the head rather than retrieving exact ranks. [Provider cache implementation](https://github.com/Unbox-AI/behaviorgpt-anomaly/blob/bed894a4c8985d5da0e7b84d84896d65234c001f/anomaly/api.py#L113-L118); [sampling implementation](https://github.com/Unbox-AI/behaviorgpt-anomaly/blob/bed894a4c8985d5da0e7b84d84896d65234c001f/anomaly/detector.py#L105-L147); [probability and rank implementation](https://github.com/Unbox-AI/behaviorgpt-anomaly/blob/bed894a4c8985d5da0e7b84d84896d65234c001f/anomaly/scoring.py#L60-L94).
 
@@ -96,20 +100,122 @@ The provider's current [SDK sequence builder](https://github.com/Unbox-AI/behavi
 
 **Minimum fix:** Read from a consistent transaction/snapshot on the source machine and record a dataset manifest, cutoff, SDK version, and catalog reference time. Replace the unchanged-mtime acceptance test with read-only access and snapshot consistency; do not copy only the main file from a live WAL database. State explicitly if the demo uses order-only histories with synthetic timing. Mark the old handoff superseded and reconcile the active open questions with the existing inventory.
 
-## Minimum changes before coding
+## Second-pass findings: challenge the choice of experiment
 
-1. Narrow the claim to model-context response and observed command agreement.
-2. Define export sanitization, stable event ordering, successful loads, and the supported skill-command map.
-3. Fix candidate sets, hit-rate denominators, partition/coverage rules, overlapping windows, and missing scores.
-4. Specify the probability estimator and complete cache key; pin the SDK and clarify synthetic clocks.
-5. Make data/API/count/latency checks a small feasibility gate before the full run. Report sparse coverage honestly and permit an empty supported ranking.
+### 11. P1: Next-command accuracy does not answer the product question
 
-These are recommendations for revisions to the active OpenSpec artifacts, not amendments made by this review document. Review and synchronize proposal, design, capability specs, and tasks before implementation.
+**Evidence:** `active/proposal.md:5,14-16,24-26`; `active/specs/behavior-scoring/spec.md:5,35`; `active/specs/skill-potency/spec.md:5,46`; `README.md:3`.
 
-## Demo path and deliberate deferrals
+The active proposal substitutes next-command prediction and a model-context shift for the broader interest in skill selection, procedural agreement, and usefulness. Even perfect next-command prediction could simply learn common commands; it would not show whether selection was appropriate or whether a skill helped. Conversely, useful instructions can change checks, reasoning, or constraints without changing the next command signature. Sponsor-model use was an explicit motivation in the proposal; the user has now removed it as a constraint.
 
-A defensible few-hour demo can show one next-command hit-rate comparison, audited examples of model-context response, and observed command agreement with explicit denominators and exclusions. Use a deterministic capped subset if the feasibility gate exceeds the budget, and label it as a pilot. A negative prediction result is still reportable.
+**Minimum fix:** Choose one demonstrable product question before choosing a model. Recommend "What trace evidence supports agreement with selected observable requirements after a successful skill load?" Keep selection relevance and task benefit as separate, explicitly unanswered questions. Move next-command prediction to an optional appendix; a successful prediction experiment cannot validate the core audit or supply a skill-quality score.
 
-Defer causal skill effects, usefulness/quality judgments, pruning or improvement recommendations, general selection/overlooked-skill discovery, live integrations, multi-harness support, production privacy guarantees, exhaustive shell parsing, and a fitted cross-skill predictor. Do not use obsolete static-feature or retail-fraud claims as evidence for this experiment.
+**Story tradeoff:** `active/proposal.md:5` still names "predict the next action" as the hackathon theme. Making a sponsor model optional does not prove a descriptive audit satisfies that theme or the user's broader selection goal. Present it as an inspection aid; confirm the desired demo story when deliberately revising scope. If prediction is essential to the pitch, keep one bounded auxiliary prediction experiment rather than relabeling observation as prediction.
 
-**Unresolved blockers:** no verified source snapshot or historical skill versions; no sanitized derived corpus; no live SDK/filter/embedding/account-capacity check; no measured eligible sample size or request budget. These prevent an unconditional end-to-end go decision, not a documentation review or a bounded feasibility pilot.
+### 12. P1: A loaded-only audit cannot discover useful overlooked skills
+
+**Evidence:** `active/specs/agent-trace-extraction/spec.md:49-58`; `active/specs/skill-potency/spec.md:20-32`; `active/proposal.md:9,16`; `docs/research/log-inventory.md:67,71,82`.
+
+The specified records condition on a skill load. They omit decision points where an available skill was never loaded. Installed-skill counts do not establish which versions were available or described to the agent at each decision. No selection opportunity denominator, task relevance labels, or task-success ground truth is supplied. Therefore neither the current predictor nor a model-free audit can distinguish overlooked skills from irrelevant or unavailable ones, or recommend removing a loaded skill because of low matching rates.
+
+**Minimum fix:** Label the output "audit of observed loaded episodes" and disclose its selection bias. Defer missed-invocation/cleanup claims. A future selection study needs task decision points, the contemporaneous available and exposed skill set, and reviewed relevance labels, including non-loads. Do not bolt this dataset reconstruction onto the few-hour core.
+
+### 13. P1: A model-free rule audit still needs applicability and epistemic limits
+
+**Evidence:** `active/specs/agent-trace-extraction/spec.md:50-58`; `active/specs/skill-potency/spec.md:21-29`; `active/design.md:41,53,63`.
+
+Removing BehaviorGPT does not turn code blocks into obligations. Conditional steps may not apply; optional steps may be skipped; negative instructions cannot be assessed by positive command matching; alternative procedures may satisfy the same requirement. Requirements about file contents or outcomes cannot be verified from stripped signatures. A complete ten-call window is only a bounded observation period, not a complete task. A successfully loaded current file is not proof of historical exposure to that version.
+
+**Minimum fix:** For each selected rule, manually record the skill version, source instruction span, obligation type, applicability evidence, allowed alternatives, observable evidence predicate, and window boundary. Support positive mandatory requirements with observable conditions first. Mark negative/optional, ambiguous, content-dependent, or unobservable rules unsupported for this demo. If applicability, historical content, successful exposure, order, or observation completeness is unknown, return insufficient evidence. A failed command attempt can support an attempt requirement, never a successful-result requirement. Keep outcomes at rule/episode level; do not promote one matched step to whole-skill compliance.
+
+### 14. P2: The simple alternative moves the bottleneck into manual review
+
+**Evidence:** `active/tasks.md:14,27-29`; `active/design.md:15,53-54`; `docs/research/log-inventory.md:58,67,82`.
+
+Three to five skills can still contain many conditional requirements. The existing plan's ten-skill spot check plus three loads does not measure labeling effort or accuracy. Frequently loaded cron skills can produce many near-duplicate episodes, while hand-picking easy skills produces an observability-biased showcase. An LLM judge would move, rather than remove, the need for trustworthy relevance/applicability labels.
+
+**Minimum fix:** Timebox the initial audit to 45 minutes, two skills, at most ten episodes, and one or two positive observable rules per skill. Choose cases by a declared deterministic rule before seeing labels; log excluded skills and reasons. Expand to 3-5 skills and at most 20 episodes only if the pilot works within the timebox. Report session/task clusters and duplicate cron templates; no independence assumption or statistical ranking. If the bottleneck is manual adjudication, shrink the scope rather than adding a new judge under deadline pressure. Have a second person inspect a few cases only if one is available; otherwise disclose single-reviewer judgments.
+
+## Three separate questions and their evidence
+
+| Question | Necessary evidence | What this hack can honestly deliver |
+|---|---|---|
+| Was selection appropriate, including useful skills not selected? | Task/decision context, available and exposed skill versions, relevance labels, selected and non-selected cases | Deferred. A loaded-only corpus has no missed-selection denominator. |
+| Were observable requirements followed after loading? | Successful exposure, applicable versioned rule, ordered subsequent trace evidence, explicit observation limits | Small rule-level agreement audit; supported agreement, no observed agreement, or insufficient evidence. |
+| Did the skill improve task benefit? | Reviewed task outcomes and a credible comparison with alternatives or no skill | Deferred. A command match or predictor lift is not task-success evidence. |
+
+## Ranked approaches for this hackathon
+
+This is an engineering recommendation given the documented constraints, not measured model performance. All options remain gated on data access and label feasibility. No provider or model is established optimal.
+
+| Rank | Approach | Best use here | Main failure / decision |
+|---|---|---|---|
+| 1 | Model-free, read-only evidence audit with a small hand-reviewed rule map | Directly inspect observable agreement in loaded episodes; make uncertainty visible | Manual applicability/exposure work is essential. Recommend only after the bounded pilot; no usefulness or selection claims. |
+| 2 | Small assessment using an already available text model | Optional assistance with task relevance or proposing rules to a human reviewer | Inferred relevance is a separate proxy. Hallucinated applicability, instruction injection in supplied logs, privacy, and human label cost remain. Do not auto-accept judgments or assume availability/access. |
+| 3 | Simple frequency/bigram prediction experiment | Cheap auxiliary baseline if next-command prediction is still interesting | Needs a stable vocabulary and adequate histories; does not assess benefit or compliance. Skip it if the core report consumes the budget. |
+| 4 | BehaviorGPT next-command experiment | Optional bounded test of whether this model adds value on agent traces | Requires catalog/API work and retained fixes 1-10, while adding no direct task-benefit evidence. Do not make it the critical path. |
+
+A static inventory/count report is the lower-effort fallback, not a substitute for behavioral evidence. A synthetic fixture demo is the final fallback if no authorized, usable real corpus is ready. Both must state which behavior claims they cannot support.
+
+## Narrow recommended core and acceptance checks
+
+The proposed core is a read-only CLI over a source-local snapshot or explicitly supplied sanitized fixtures. It uses ordinary trace records and a tiny reviewed rule map, without a provider-specific catalog or a new plugin framework. These are proposed checks for a later implementation, not checks performed in this PR.
+
+1. **Data and exposure gate:** Identify the snapshot, stable call/result IDs, source ordering, loaded skill-content hash/version and successful load result. No matching of current skill text to historical episodes without a visible version-mismatch limitation; use insufficient evidence for historical agreement when it changes the rule. Do not broaden data access or copy raw logs to satisfy the demo.
+2. **Rule and applicability gate:** Start with the pilot above. For every evaluated rule include instruction location, obligation type, observable condition, permissible alternatives and evidence requirement. Record local trace references supporting applicability; otherwise mark unknown. Select before observing outcomes and list exclusions. Do not infer relevance merely because the agent loaded a skill.
+3. **Status contract:** "Supported agreement" requires the particular observable predicate after successful exposure. "No observed agreement" requires known applicability and an intact declared observation window, and means only that its predicate was not found there. "Insufficient evidence" covers missing data, unclear applicability, unsupported rules, historical-version gaps, ordering ambiguity and truncated windows. Never map unknown to failure. Keep applicability/not-applicable exclusions separate from evaluated-status denominators.
+4. **Evidence and boundary checks:** Every row includes pseudonymous episode ID, skill/version, rule ID, window, status, reason and stable source references; positive rows cite the observed action/result and applicability evidence. Failed commands, valid alternatives, duplicate/reloaded skills, same-batch calls, session endings and overlapping windows have explicit policies. No automated execution, deletion, or edits to skills.
+5. **Small review set:** Manually check at most ten pilot cases against their traces. Include a positive match, applicable no-match, unknown applicability, optional/negative exclusion, alternate valid procedure, failed result, version mismatch, and an incomplete or ambiguous window. These are semantic acceptance scenarios, not a claim that current data contains them. Use labeled fixtures for missing edge cases, clearly separated from real cases. Revise the rules on pilot cases, then check a few reserved cases; report disagreements instead of inventing an accuracy guarantee.
+6. **Reproducibility/privacy:** Repeated runs on the same snapshot/rules yield identical substantive rows. Match rows/counts to source-local counts without exposing raw text. Export only reviewed safe fields; keep private source pointers local or pseudonymous. No external inference is needed for this core. The CLI is read-only and source integrity is checked in a manner compatible with other live writers.
+7. **Demo outputs:** One machine-readable evidence table, a Markdown report with audited examples and limitations, and one chart of the three statuses per skill with denominators and excluded counts. Show episode/session counts, snapshot/rule hashes and selection rule. No leaderboard, potency ranking, quality score, or precision claims without a separately defined evaluation. The honest result may be mostly unknown or only two auditable skills.
+
+**Supported claims:** "For this version, episode and observable rule, these trace events support agreement"; "no matching evidence was observed within the declared applicable window"; "evidence is insufficient"; and descriptive counts for this selected sample.
+
+**Unsupported claims:** good/bad or useful/useless skill; causal influence; improved task success; instructions were ignored; entire procedure complied with; a useful skill was overlooked; a skill should be deleted; population-wide adherence; model optimality. Any text-model relevance judgment must be labeled a reviewed proxy separately from trace evidence.
+
+## Decision gate for any added model
+
+Do not compare approaches that answer different questions on a common leaderboard. The trace audit is an evidence task; relevance judging is a text-label task; next-command prediction is a ranking task. Define the intended additional output before running a model.
+
+- Reserve no more than 15 minutes and 20 external calls, including retries, for one optional method after the core works. Use no new provider onboarding, training/fine-tuning, temperature-fitting project, or multi-provider bake-off. A method that cannot be evaluated under that cap is deferred, not presumed inferior.
+- Fix the model/SDK/settings, sanitized inputs, cases, labels, candidate universe, baseline, metric, stop rule and call budget before looking at results. Do not choose only successful model examples. Logs and skill text are untrusted data, not instructions for the evaluator; allow no tool actions from judged text.
+- For next-command prediction use the same held-out steps, temporal cutoff, first-use policy, candidate mask and hit-rate denominator as a bigram/unigram baseline. Explain that richer query/skill text is extra input; report it as a system comparison, or add a matched-input ablation if the cap permits. Never call it intrinsic model superiority. Skip probability/entropy/potency computation entirely if all the optional demo needs is top-k inclusion.
+- For relevance/rule proposals use the same task and skill excerpts as a simple keyword/rule baseline and independently reviewed labels. Keep rubric revision cases separate from a small reserved set. A model's own labels cannot serve as ground truth for its evaluation. Abstentions and unsupported confident judgments count visibly.
+- Retain a model only if it fixes at least two baseline errors on ten reserved reviewed cases without introducing additional unsupported confident judgments, meets the time/call/privacy cap, and adds a concrete decision/example that the model-free report lacks. This is a proposed hackathon stop rule, not a powered benchmark or evidence of general superiority. If ten credible reserved cases cannot be obtained within the cap, label outputs exploratory or omit the model.
+- Report failures, ties, input differences, sample size and elapsed cost. A marginal or unmeasured gain is not a reason to block a finished evidence demo. If there is no added value, ship the evidence report without a predictive model.
+
+## What optional BehaviorGPT lets us delete or defer
+
+If the team accepts the model-free core, remove the following from the critical path when deliberately revising the active specification:
+
+- `active/tasks.md:5-7`: Unbox key, SDK installation and provider-specific filter/timestamp setup.
+- Provider-specific parts of `active/tasks.md:13,15-16`: Search/View/ExternalItem mapping, 15-column parquet/schema checks, catalog popularity and cross-machine catalog transfer. Retain sanitized extraction and source integrity; do not implement a universal intermediate format just for hypothetical future backends.
+- `active/tasks.md:20-23`: catalog embedding, cached async API scoring, head/tail sampling, temperature/entropy/surprisal and next-command evaluation. A small prediction baseline is optional, not required for the audit.
+- Model-specific parts of `active/tasks.md:27-29`: pre/post probability shifts, grouped shift-to-follow-through prediction, potency ranking and the non-positive-shift headline. Replace them with evidence rows, unknowns, reviewed examples and status counts.
+- `active/design.md:29,33-39,45,51,56-57`: provider event conventions, embeddings, catalog slots, sampling/calibration, API cache and model-driven repeat exclusions. Commands repeated after loading remain ordinary candidate evidence in an audit.
+
+Retain the hard shared work: a trustworthy snapshot, exposure/version evidence, applicability rules, meaningful command/result matching, privacy, stable references and a reproducible report. Removing the model does not solve these.
+
+## Synchronize the active specification before implementation
+
+This PR changes only this review document. The active OpenSpec still describes the BehaviorGPT experiment and remains the implementation source until deliberately revised. Do not implement the recommendation while leaving contradictory requirements active.
+
+| Artifact | Minimum deliberate revision if the recommendation is accepted |
+|---|---|
+| `active/proposal.md:5-26,33-36` | State the bounded loaded-episode evidence question, supported/unsupported claims, model-independent outputs and optional experiments. Remove sponsor-model necessity and causal/cleanup wording. |
+| `active/design.md:19-63` | Replace provider-first decisions with the snapshot/exposure/rule/status contract, fixed pilot bounds and local-only data flow. Keep any model experiment in a labeled optional section with its own gate. |
+| `active/specs/agent-trace-extraction/spec.md:31-65` | Specify neutral evidence records, successful exposure, stable source offsets, sanitization and version uncertainty. Require a temporal split only for a retained predictive evaluation, not as fake validation of descriptive counts. |
+| `active/specs/skill-potency/spec.md:5-50` | Replace shift ranking with rule-level agreement evidence, explicit applicability and unknowns, window policies and status-chart/report acceptance. Rename the capability consistently if desired. |
+| `active/specs/behavior-scoring/spec.md:5-46` | Explicitly defer it or isolate it as an optional experiment; remove mandatory probability outputs from the core. Do not leave mandatory SHALLs behind an informal "optional" task label. |
+| `active/tasks.md:5-33` | Reorder: data/exposure feasibility, two-skill pilot, reviewed rules, evidence CLI/report and acceptance checks; optional model last. Update integration outputs and achievable deadline without pretending any task is completed. |
+| `README.md:1-3`; `AGENTS.md:3`; `docs/handoffs/handoff.md:14-19` | Align the public description and active change pointer if renamed; mark superseded handoff choices explicitly. Preserve historical docs as history rather than silently treating them as current scope. |
+
+Validate the revised OpenSpec consistently before coding, as `AGENTS.md` requires. A separate implementation PR should follow the scope decision; this review does not authorize running private-data jobs or inference.
+
+## Remaining limits and fallback
+
+**Unverified shared blockers:** access to an authorized consistent source snapshot, retrievable historical skill content/exposure, adequate task context, reliable call/result alignment, sanitization, and an achievable reviewed sample. The inventory is documentary evidence, not fresh validation of those properties. No current data, API, quota, cost or model-quality claim has been tested here.
+
+If the two-skill pilot cannot support rule evidence within 45 minutes, ship an inventory/observability report and clearly synthetic end-to-end examples. Do not label that fallback an assessment of real skill compliance. If a few real cases are supportable, show those with exclusions and unknowns; do not force five skills or a ranking. Optional prediction may fail or be omitted without making the core demo fail.
+
+Defer usefulness/causal claims, automatic cleanup or edits, overlooked-skill discovery, broad semantic judging, general shell parsing, multi-harness/provider support and production integrations. The recommended demo is useful as an inspection aid for a narrow sample; whether that narrower product is the desired hackathon story is the explicit scope decision still needed before revising the active spec.
