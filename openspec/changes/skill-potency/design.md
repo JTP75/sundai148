@@ -2,7 +2,16 @@
 
 ## Context
 
-- **Primary corpus, pacel-orin Hermes:**
+- **Corpora (data session pre-flight, 2026-11-08):**
+  - **`swechat-v1` (public, primary):** ungated copy of SALT-NLP SWE-chat v1 (`cfahlgren1/SWE-chat`, ODC-BY), on pacel-pc at `~/data/cc-public/swe-chat-v1/`. Contents: `transcripts/<session_id>.jsonl` (raw Claude Code JSONL), plus `sessions.parquet` (incl. `repo_id`, `user_id`, `agent`, `created_at`, `cli_version`).
+    - 4,852 Claude Code sessions, 2026-01-05 → 04-19.
+    - 1,677 `Skill` loads (87 errored), 301 skills, 76 with ≥5 loads in ≥3 sessions.
+    - Clustered: 201 repos, and one repo holds 870 sessions and 13% of loads.
+    - Mixed models (opus/sonnet/haiku 4.5–4.7) and Claude Code versions 1.0–2.1.
+    - No task key and no paired runs.
+  - **`hermes-orin` (private, alongside):** details below.
+  - **Future:** GitHub Entire.io checkpoint branches (fresh to 11-05, cumulative files to dedupe by `sessionId`) and SALT-NLP SWE-chat v2 (gated; skill invocations plus skill bodies). Neither is in this build.
+- **pacel-orin Hermes:**
   - `~/.hermes/state.db` (SQLite, live, WAL). `messages.tool_calls` holds a JSON list of `{function:{name,arguments}}` on assistant rows; `messages.tool_name` is set on result rows. `messages.timestamp` and `sessions.started_at` are epoch REALs. `sessions.source` is one of cron, telegram, auricle, subagent, cli, ...
   - Skill loads are `skill_view` calls with `arguments.name`.
   - Skill files live at `~/.hermes/skills/<category>/<skill>/SKILL.md`.
@@ -10,7 +19,10 @@
   - 254 loads, 68 skills, 10 skills with ≥5 raw loads.
   - Curator ledger: 391 rows from 2026-10-01 to 11-08 (curator 365, agent 26; patch 288, create 40, archive 38, write_file 24, delete 1).
   - `created_by` over the 68 loaded skills: null 42, agent 16, missing 7, learn 2, installed 1.
-  - `state.db` holds 108 `skill_manage` calls, including edits from before the ledger existed.
+  - `state.db` holds 108 `skill_manage` calls (53 before 10-01). Of these, 55 use an `operations` format with no `action` field and need their own parser. They cover agent edits only, not the curator's 269 patches.
+  - The ledger's `before`/`after` hold no text, only lists of `{path, sha256}`. Hashes can confirm a candidate version but cannot rebuild one.
+  - Cron jobs likely preload skills: `~/.hermes/cron/jobs.json` has a `skills` key 22 times. Sessions carry no cron job id. `system_prompt_hash` is set on all 548 cron sessions (431 distinct).
+  - 177 of 254 loads fall before 10-01.
 - **Other corpora:**
   - OpenCode (44 loads), Claude Code (14), Qwen (5), Codex (0); all below the bar alone.
   - The data session is searching public web sources for more. The design is therefore multi-corpus (D12).
@@ -110,11 +122,11 @@ Lift is reported per stratum and per corpus. **Novel + local** supplies headline
 
 **D9. Statistics and ranking (pre-registered, corpus-agnostic).**
 - **Per-skill potency:** empirical-Bayes shrunken mean lift (normal-normal, prior fitted across skills within a corpus).
-- **CIs:** 95%, from a bootstrap of 1,000 resamples grouped by session *and* task key.
-- **Ranking:** every skill with ≥2 scorable loads is ranked. A skill is **supported** when it has ≥5 scorable loads *and* ≥3 independent sessions. An empty supported set is allowed.
+- **CIs:** 95%, from a bootstrap of 1,000 resamples grouped by each corpus's **cluster key** (D21).
+- **Ranking:** every skill with ≥2 scorable loads is ranked. A skill is **supported** when it has ≥5 scorable loads *and* ≥3 distinct cluster keys (D21). An empty supported set is allowed.
 - **Inconclusive:** a CI that spans 0 means "inconclusive," never "inert" or "prune."
 - **Popularity check:** Spearman correlation of potency vs load count and vs the mean base rate of the prescribed set; |ρ| ≥ 0.5 is flagged.
-- **Validation:** any predictive validation is grouped by skill, session and task key.
+- **Validation:** any predictive validation is grouped by skill and cluster key.
 
 **D10. Fixed parameters (pre-registered).**
 
@@ -125,7 +137,7 @@ Lift is reported per stratum and per corpus. **Novel + local** supplies headline
 | Placebo K | 20, seed 148 |
 | Base-rate ceiling | 0.2 |
 | Familiarity cutoffs | 0 / 0.02 |
-| Ranked / supported | ≥2 loads / ≥5 loads and ≥3 sessions |
+| Ranked / supported | ≥2 loads / ≥5 loads and ≥3 cluster keys |
 | Train share | ~70% per corpus |
 | Bootstrap | 1,000 resamples, seed 148 |
 
@@ -151,7 +163,7 @@ All are fixed before any adherence number is computed.
   - `loads` (skill, step, trigger, flags, version id);
   - `skill_versions` (skill, version id, valid-from, prescribed set with roles, version source);
   - `provenance` (skill, creation date, created_by, agent-touched, change list);
-  - `sessions` (corpus, session, start, source, task key, split).
+  - `sessions` (corpus, session, start, source, task key, cluster key, model, harness version, split).
 - A `corpora.yaml` registry records each corpus's harness, model(s), date range, privacy class, and license/URL.
 - **Privacy classes:**
   - *Private:* only allowlisted fields are exported (signatures, skill names, booleans, hashes, counts, timestamps). Query text, descriptions, prompts and arguments are never exported, and sanitization runs on the source machine.
@@ -182,16 +194,17 @@ All are fixed before any adherence number is computed.
 - **Prose skills:** the map may use tool names (e.g. `web_search`) as observable predicates.
 
 **D14. Skill version at load time.** Version sources, in priority order:
-1. Ledger replay, when `before`/`after` hold full text.
-2. Replay of `skill_manage` calls in `state.db`. This covers edits from before 2026-10-01.
-3. Otherwise, the **stable core**: commands present in both the earliest known and the current version, flagged `version_core`. It removes later-added commands (the reverse-causality risk) without dropping the load.
+1. **`injected`:** the skill body the harness put into the transcript at load time. Claude Code does this: a user message starting "Base directory for this skill" follows the `Skill` result. This is the exact version in force.
+2. **`ledger`:** ledger replay, when `before`/`after` hold full text. On orin they hold only `{path, sha256}`, so this source is unused there. The hashes may still confirm a candidate version.
+3. **`skill_manage`:** replay of the agent's own `skill_manage` calls in `state.db`, covering both the `action` format and the `operations` format. Edits from before 2026-10-01 count, but curator patches are not covered.
+4. **`version_core`:** the stable core, meaning commands present in both the earliest known and the current version. It removes later-added commands (the reverse-causality risk) without dropping the load. Expect this to dominate on Hermes.
 
-A load is `version_unknown` and excluded only when none of the three works.
+A load is `version_unknown` and excluded only when none of these works.
 
-**Preloads:** if Hermes preloads skills (cron config, system prompt) without `skill_view`, and the preload is detectable, it is a load at step 0 with trigger `preloaded`. If it is not detectable, it is a documented blind spot, and sessions of jobs suspected of preloading are excluded from no-load controls.
+**Preloads:** Hermes cron jobs likely preload skills (`skills` key in `~/.hermes/cron/jobs.json`). When a session can be mapped to its job, by prompt hash or `system_prompt_hash`, each preloaded skill is a load at step 0 with trigger `preloaded`. If it is not detectable, it is a documented blind spot, and sessions of jobs suspected of preloading are excluded from no-load controls.
 
 **D15. Task key.** Fallback chain:
-1. cron job id;
+1. cron job id (absent on Hermes sessions today; kept for corpora that have one);
 2. hash of the normalized first user/cron prompt (digits and dates stripped), computed on the source machine with only the hash exported;
 3. none.
 
@@ -234,17 +247,20 @@ A is computed only from `supported_agreement` and `no_observed_agreement` rows. 
 | `potency/schema.py` | Single source of truth for table columns, types and enums |
 | `potency/io.py` | utf-8 JSONL/CSV read and write, deterministic float formatting, sorted keys |
 | `potency/normalize.py` | D1 signature normalizer |
-| `potency/adapters/hermes.py` | Hermes corpus adapter |
-| `potency/adapters/<public>.py` | One adapter per public corpus |
+| `potency/adapters/hermes.py` | Hermes corpus adapter (W1) |
+| `potency/adapters/claude_code.py` | Claude Code JSONL adapter, used for `swechat-v1` and later Entire.io (W2) |
+| `potency/privacy.py` | Private-field allowlist and regex backstop (W1) |
+| `potency/experiments.py` | D7 natural experiments (W4) |
 | `potency/extract.py`, `census.py`, `draft_rules.py`, `bundle.py` | Source-machine stages |
 | `potency/evidence.py` | D18 evidence layer |
 | `potency/expect.py` | D3 expectation model |
 | `potency/score.py` | D2, D4–D7, D9 |
 | `potency/report.py` | Charts and summary |
 | `potency/run_all.py` | Runs the analysis stages in order |
-| `tests/fixtures/synthetic/` | Generated by `tests/make_fixtures.py`, seed 148 |
+| `tests/fixtures/synthetic/` | Generated by `tests/make_fixtures.py`, seed 148: D12 tables plus golden intermediates (`golden/evidence.csv`, `golden/expected.csv`, `golden/potency_expect.json`) so each downstream module tests against frozen inputs |
+| `tests/fixtures/claude_code_sample/`, `tests/fixtures/hermes_sample.py` | Small synthetic source samples for the two adapters |
 
-- **Ownership:** `schema.py`, `io.py` and the synthetic fixtures are built first, by the orchestrator, and frozen. Each worker owns one module group plus its tests, and changes the shared modules only through the orchestrator.
+- **Ownership:** `schema.py`, `io.py`, `normalize.py` and all fixtures are built first, by the orchestrator, and frozen. Each worker owns one module group plus its tests, and changes the shared modules only through the orchestrator.
 - **Fixtures:** the synthetic corpus encodes every evidence-status case, plus a "habit" skill and a "novel" skill with known expected lift. Each module's tests pass against it on its own.
 - **Interfaces:** every stage reads and writes only the D12 tables and named output files in a data dir. There are no in-memory cross-module calls except into `schema`, `io` and `normalize`.
 
@@ -264,6 +280,16 @@ A is computed only from `supported_agreement` and `no_observed_agreement` rows. 
   - overlooked skills (the audit covers only loaded episodes, a selection-biased sample);
   - deletion or pruning recommendations.
 
+**D21. Cluster key and Claude Code load rules.**
+- **Cluster key:** each session carries a `cluster_key`, the unit of independence for resampling, support and validation. It is `repo_id` for `swechat-v1`, and the task key for Hermes, or the session id when there is no task key. `corpora.yaml` records which field supplies it.
+- **Claude Code loads:**
+  - A load is an assistant `tool_use` with name `Skill`. The skill name is read from the first present input key: `skill`, `skillName`, `skill_name`, `name`.
+  - The load counts only if the matching `tool_result` is not `is_error`.
+  - `skill_listing` attachments (skills offered) and `invoked_skills` attachments (re-listed after compaction) are not loads.
+  - `attributionSkill` on later assistant messages is kept as an optional evidence hint column, never as a load.
+  - `sessions.parquet` supplies `repo_id`, `user_id`, model and Claude Code version.
+- **Corpus registry:** `corpora.yaml` holds an entry for `swechat-v1` (public, ODC-BY, `https://huggingface.co/datasets/cfahlgren1/SWE-chat`) and one for `hermes-orin` (private).
+
 ## Risks / Trade-offs
 
 - [Loads are endogenous: the agent loads a skill when it already intends the task] → Â conditions on context but can't see intent, so lift is an upper bound. Say so in the summary, and rely on S1, S2, S3 and the trigger split for causal claims.
@@ -274,12 +300,11 @@ A is computed only from `supported_agreement` and `no_observed_agreement` rows. 
 - [The expectation model doesn't beat popularity] → report it; lift is then "above base rate," which is still the popularity-corrected quantity.
 - [Prescribed-command extraction is noisy] → hand audit for top skills, `auto` flag elsewhere, same normalizer on both sides.
 - [A secret leaks into derived files] → field allowlist, sanitization at the source, and a regex scan as a backstop (not a guarantee).
+- [Clustered public data: one repo dominates `swechat-v1`] → cluster-key resampling and the ≥3-cluster support rule (D21).
 - [Mixed corpora differ in harness and model] → per-corpus models and strata; skills are ranked within a corpus and never pooled across corpora.
 - [Platform drift during the 18:00 handover] → CI matrix, byte-identical outputs on synthetic data, and a handover runbook in `docs/`.
 
 ## Open Questions
 
-- Do the ledger's `before`/`after` fields hold full text, diffs or nothing? Answered by the census; it decides D14 source 1.
-- Does Hermes preload skills for cron jobs? The data session is checking source and config.
-- What is the task-key coverage under D15? Answered by the census.
-- Which public corpora qualify, and do any have paired with/without-skill runs? The data session is searching.
+- Mapping Hermes cron sessions to `~/.hermes/cron/jobs.json` (prompt hash vs `system_prompt_hash`). W1 implements both, and the census reports coverage.
+- The instructed-load count on Hermes is not yet measured; the census reports it.

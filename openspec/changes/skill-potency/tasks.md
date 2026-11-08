@@ -1,56 +1,81 @@
 # Tasks
 
-Each group lists its owner. "W-x" is a parallel worker in its own Orca worktree. "Orch" is the orchestrating session. "Data" is the data session on the source machines. Workers branch from the orchestrator's foundation commit (group 1) and land their work through PRs.
+Each group lists its owner. "Orch" is the orchestrating session. "W1"–"W5" are Qwen Code workers, each in its own Orca worktree and owning only the paths listed in design D19. "Data" is the data session. "Justin" is the human reviewer. Workers land work through PRs, and only Orch ticks boxes here, at merge time.
 
 ## 0. Data gathering (Data): `corpus-intake`
 
-- [ ] 0.1 Create `corpora.yaml` with entries for orin Hermes and candidate public corpora (harness, model, date range, privacy class, license/URL)
-- [ ] 0.2 Run the orin census in one read transaction, counts only, no adherence. Cover: ledger `before`/`after` content type and sizes, `skill_manage` replay coverage before 2026-10-01, scorable loads and independent sessions per skill, exclusion reasons, task-key coverage (D15), instructed count, Hermes cron preload check (source + config), program frequency list. Verify `census.json` and `manifest.json` contain no adherence fields
-- [ ] 0.3 Find public corpora with skill-load events, versioned skill text and, ideally, paired with/without-skill runs; register them and run the census on each
-- [ ] 0.4 Gate: review the census and record decisions in design.md (available version sources, eligible corpora, preload handling) before real-data scoring (group 7)
+- [x] 0.1 Find public corpora; result: `swechat-v1` is primary (design Context); Entire.io and SWE-chat v2 are future
+- [x] 0.2 Answer the Hermes open questions: the ledger is hash-only, `skill_manage` coverage is partial, cron jobs preload skills, and there is no cron job id (design Context, D14, D15)
+- [ ] 0.3 After W1 merges: run `extract`, `census`, `draft_rules` and `bundle` on orin; the census reports scorable loads, cluster keys, version-source coverage, preload mapping and the instructed count
+- [ ] 0.4 Gate: review both censuses and record any decisions in design.md before real-data scoring (group 7)
 
 ## 1. Foundation (Orch, before fan-out)
 
-- [ ] 1.1 Add `requirements.txt` (pinned, wheels on all three OSes), `.gitattributes` (`* text=auto eol=lf`), the `potency/` package skeleton with a `python -m` stub for every stage (D11), and `pyproject.toml` for pytest
-- [ ] 1.2 Implement `potency/schema.py` (all D12 tables, rule map, evidence, outputs: columns, types, enums, status and reason codes) and `potency/io.py` (utf-8 JSONL/CSV, sorted keys, fixed float format, checksum helpers)
-- [ ] 1.3 Implement `tests/make_fixtures.py` (seed 148). It must produce a synthetic corpus that covers every evidence status and reason code, `same_batch`, `overlap`/`incomplete` windows, maintenance/repeat loads, all three version sources, all three triggers, task keys, a "habit" skill and a "novel" skill with known expected lift, a pre/post-creation task, an edit event, and a paired with/without-skill subset
-- [ ] 1.4 Freeze the foundation: commit, push, and verify `pytest` collects and the fixtures regenerate byte-identically
+- [ ] 1.1 `requirements.txt` (pinned, wheels on all three OSes, includes pytest), `pyproject.toml`, `.gitattributes`, and `.gitignore` entries for `.orch/`, `data/` and `derived-*.zip`
+- [ ] 1.2 `potency/` package skeleton with a `python -m` stub and `--help` for every D11 stage
+- [ ] 1.3 `potency/schema.py` (every table, column, type, enum, status, reason code, version source, trigger and `cluster_key`) and `potency/io.py` (utf-8 JSONL/CSV, sorted keys, fixed float format, SHA-256 helpers)
+- [ ] 1.4 `potency/normalize.py` (D1) with tests for every normalization scenario
+- [ ] 1.5 `tests/make_fixtures.py` (seed 148): the synthetic corpus plus golden intermediates (`golden/evidence.csv`, `golden/expected.csv`, `golden/potency_expect.json`), `tests/fixtures/claude_code_sample/` and `tests/fixtures/hermes_sample.py`
+- [ ] 1.6 Shared venv at `~/.venvs/sundai148`; `pytest` passes and the fixtures regenerate byte-identically
 
-## 2. Source-machine stages (W-1): `corpus-intake`, `agent-trace-extraction`
+## 2. Hermes source stages (W1): `corpus-intake`, `agent-trace-extraction`
 
-- [ ] 2.1 `potency/normalize.py`: D1 normalizer (known-CLI two-level subcommands, compound commands, secret-free), with tests for every spec scenario
-- [ ] 2.2 `potency/adapters/hermes.py`: one read transaction against a `mode=ro` source, ordering, request/result join, successful loads, `same_batch`, command-attempt status, maintenance/repeat flags, trigger labels (on-machine prompt scan, label only), window flags, no-load windows, task keys (D15), version sources (D14), provenance and agent-touched (D16), temporal split. Test against a tiny synthetic Hermes-schema SQLite built in the test
-- [ ] 2.3 `potency/extract.py`, `census.py` (outcome-free), `draft_rules.py` (draft rule map with no skill text exported) and `bundle.py` (zip plus SHA-256 list); stdlib only, enforced by a test that imports them with third-party packages blocked
-- [ ] 2.4 Private-field allowlist check and regex backstop scan, run inside `extract` and `bundle`; tests prove that queries, prompts and arguments never appear in outputs
+- [ ] 2.1 `potency/adapters/hermes.py`. Covers:
+  - one read transaction against a `mode=ro` source;
+  - ordering, request/result join, successful loads, `same_batch` and command-attempt status;
+  - maintenance and repeat flags, trigger labels (on-machine prompt scan), window flags, no-load windows;
+  - task key and cluster key, preload mapping;
+  - version sources (`skill_manage` in both formats, ledger hash check, `version_core`);
+  - provenance and agent-touched, temporal split.
+- [ ] 2.2 `extract.py`, `census.py` (outcome-free), `draft_rules.py` (no skill text exported) and `bundle.py` (zip with a SHA-256 list), using only the standard library (enforced by a test)
+- [ ] 2.3 `potency/privacy.py`: the allowlist check plus a regex backstop, run inside `extract` and `bundle`; tests prove that prompts, queries and arguments never appear
 
-## 3. Public corpus adapters (W-2): `corpus-intake`
+## 3. Claude Code adapter (W2): `corpus-intake`, `agent-trace-extraction`
 
-- [ ] 3.1 For each public corpus registered in 0.3, add `potency/adapters/<name>.py` emitting the D12 tables, including paired-run markers when present; test it on a small checked-in sample under the corpus's license, or on a synthetic sample of the same shape
-- [ ] 3.2 If no public corpus is registered yet, build the adapter interface test harness so a new adapter is a single file
+- [ ] 3.1 `potency/adapters/claude_code.py` (D21):
+  - `Skill` loads with variant name keys; `is_error` loads dropped;
+  - `injected` versions, with `skill_listing` and `invoked_skills` excluded;
+  - the `attributionSkill` hint;
+  - `sessions.parquet` join for `repo_id`, user, model and version, so the cluster key is `repo_id`;
+  - task key from a first-prompt hash.
+- [ ] 3.2 `corpora.yaml` with entries for `swechat-v1` and `hermes-orin`; tests on `tests/fixtures/claude_code_sample/`
 
-## 4. Evidence and expectation (W-3): `adherence-evidence`, `adherence-expectation`
+## 4. Evidence and expectation (W3): `adherence-evidence`, `adherence-expectation`
 
-- [ ] 4.1 `potency/evidence.py`: the D18 status contract from loads, steps and the rule map (approved or `auto`), with tests for every status and reason scenario
-- [ ] 4.2 `potency/expect.py`: per-corpus base rates, IDF weights, familiarity strata, the expectation model on train no-load windows, the popularity baseline, a train-only vocabulary; write `expect_eval.json` (AUC, Brier, calibration, hit-rate@{1,5,10} overall and by decile, OOV coverage, counts), with tests
+- [ ] 4.1 `potency/evidence.py`: the D18 status contract; output matches `golden/evidence.csv` on the fixtures
+- [ ] 4.2 `potency/expect.py`. Covers:
+  - per-corpus base rates, IDF weights and familiarity strata;
+  - the model on train no-load windows, the popularity baseline, and a train-only vocabulary;
+  - `expected.csv` (load × rule `p_hat`) and `expect_eval.json`.
 
-## 5. Scoring and analyses (W-4): `skill-potency`
+## 5. Scoring and experiments (W4): `skill-potency`
 
-- [ ] 5.1 `potency/score.py`: A from evidence, Â, lift, placebo lift (K=20, seed 148), avoid matches, strata, shrinkage ranking with grouped bootstrap, supported marking, popularity check, bloat stat, incomplete/overlap sensitivity; write `potency.csv` and `strata.csv`. Test that the "habit" skill gets lift ≈ 0 at ~100% follow-through and the "novel" skill gets positive lift
-- [ ] 5.2 Pre/post-creation DiD, edit-response, paired-run validation and the trigger split; write `experiments.json`, with "not computable" entries when inputs are missing; test against the fixture's known effects
+- [ ] 5.1 `potency/score.py`:
+  - A from evidence; lift; placebo lift (K=20, seed 148); avoid matches;
+  - strata, shrinkage ranking, cluster-key bootstrap, supported marking;
+  - the popularity check, the bloat stat and the sensitivity runs.
+  
+  On the golden inputs it reproduces `golden/potency_expect.json` (habit ≈ 0, novel > 0).
+- [ ] 5.2 `potency/experiments.py`: pre/post creation, edit-response, paired-run validation and the trigger split, with "not computable" entries when inputs are missing
 
-## 6. Report, platform and handover (W-5): `skill-potency`, `adherence-evidence`, `cross-platform-runtime`
+## 6. Report, platform and handover (W5): `skill-potency`, `adherence-evidence`, `cross-platform-runtime`
 
-- [ ] 6.1 `potency/report.py` and `run_all.py`: `potency.png`, `status.png` and `summary.md` per corpus, with the three headline numbers, the endogeneity caveat, the loaded-episodes disclosure, "agreement with prescribed action" wording, example rows per status, and the rule-map and program-map appendix
-- [ ] 6.2 GitHub Actions matrix (ubuntu, macos, windows): pytest plus `run_all` on the fixtures, with an output-hash comparison across OSes
-- [ ] 6.3 `docs/runbook.md`: PowerShell and bash setup, bundle unpack (`Expand-Archive`), checksum verification, `run_all`, where outputs land, and a task-state section
+- [ ] 6.1 `potency/report.py` and `run_all.py`:
+  - per corpus: `potency.png`, `status.png` and `summary.md`;
+  - the three headline numbers;
+  - the required caveats, disclosures and wording;
+  - example rows per status, and the map appendix.
+- [ ] 6.2 GitHub Actions matrix (ubuntu, macos, windows): pytest plus `run_all` on fixtures, with a cross-OS output hash comparison
+- [ ] 6.3 `docs/runbook.md`: PowerShell and bash setup, bundle unpack and checksum verification, `run_all`, and the current task state
 
-## 7. Integration and real data (Orch + Data + Justin)
+## 7. Integration and real data (Orch, Data, Justin)
 
-- [ ] 7.1 Orch: merge worker PRs, run the full fixture pipeline on Linux, and confirm CI is green on all three OSes
-- [ ] 7.2 Data: run extract, census, draft_rules and bundle on orin (and on public corpora) with the merged code, then hand the zip to Justin
-- [ ] 7.3 Justin: approve the rule map and the public/local program map and commit both (maps hold no skill text)
-- [ ] 7.4 Orch: run `run_all` on the real bundle, review outputs against the census, and fix any issues through PRs
-- [ ] 7.5 Justin shares the bundle and outputs with Kris via Google Drive; Kris reproduces `run_all` on Windows from the runbook, with matching output hashes
+- [ ] 7.1 Orch: review and merge W1–W5 (scope check plus full pytest on merged main); CI is green on all three OSes
+- [ ] 7.2 Orch: run the Claude Code adapter on `swechat-v1` on pacel-pc, then census, draft_rules, evidence, expect, score and report
+- [ ] 7.3 Data: run the Hermes source stages on orin and hand over the bundle
+- [ ] 7.4 Justin: approve the rule maps and the public/local program map, and commit both (no skill text)
+- [ ] 7.5 Orch: rerun with the approved maps, review outputs against the censuses, and fix issues through PRs
+- [ ] 7.6 Kris reproduces `run_all` on Windows from the runbook and a shared bundle, with matching output hashes
 
 ## Workflow follow-up
 

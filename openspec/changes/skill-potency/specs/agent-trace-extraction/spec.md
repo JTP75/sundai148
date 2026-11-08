@@ -48,10 +48,7 @@ A skill load SHALL count only when its result is non-error. Commands in the same
 - **THEN** the `gog tasks list` step is flagged `same_batch` for that load
 
 ### Requirement: Prescribed set from the skill version at load time
-Each load SHALL record the version id of the skill text in force at its timestamp. Version sources SHALL be tried in this order:
-1. curator-ledger replay with full text;
-2. replay of `skill_manage` calls in the session log;
-3. the stable core, flagged `version_core`: commands present in both the earliest known and the current version.
+Each load SHALL record the version id of the skill text in force at its timestamp, trying version sources in the order `injected`, `ledger`, `skill_manage`, `version_core` (design D14).
 
 A load SHALL be flagged `version_unknown` only when no source applies.
 
@@ -128,7 +125,7 @@ The extractor SHALL emit, for every step position, the next N signatures, the pr
 
 ### Requirement: Task key
 Each session SHALL carry a task key from the first available source:
-1. a cron job id;
+1. a cron job id, when the source records one;
 2. a hash of the normalized first user or cron prompt (digits and dates stripped), computed on the source machine;
 3. none.
 
@@ -149,3 +146,40 @@ Within each corpus, every session and load SHALL be assigned to exactly one of `
 #### Scenario: Cutoff assignment
 - **WHEN** a session starts after the cutoff
 - **THEN** it and its loads are in `test`, and none of its steps contribute to base rates, weights, strata, vocabulary or model fitting
+
+### Requirement: Injected skill version
+When the transcript contains the skill body injected at load time, the extractor SHALL use it as the load's version, with version source `injected`. For private corpora, only its derived rule set and hash SHALL be exported.
+
+#### Scenario: Claude Code load
+- **WHEN** a successful `Skill` call is followed by a message beginning "Base directory for this skill"
+- **THEN** the load's version id is the hash of that body and its version source is `injected`
+
+### Requirement: Claude Code load detection
+For Claude Code transcripts, a load SHALL be an assistant `tool_use` named `Skill`. The skill name SHALL be read from the first present input key among `skill`, `skillName`, `skill_name` and `name`. `skill_listing` and `invoked_skills` attachments SHALL NOT be loads. An `attributionSkill` value on later assistant messages SHALL be kept as an optional evidence hint column.
+
+#### Scenario: Name under a variant key
+- **WHEN** a `Skill` call has input `{"skillName": "commit"}`
+- **THEN** a load of skill `commit` is recorded
+
+#### Scenario: Errored load
+- **WHEN** the matching `tool_result` has `is_error: true`
+- **THEN** no load is recorded
+
+#### Scenario: Skill offered but not loaded
+- **WHEN** a `skill_listing` attachment lists `commit`
+- **THEN** no load is recorded
+
+### Requirement: Cluster key
+Every session SHALL carry a cluster key, chosen per corpus in `corpora.yaml`: the repository id for public Claude Code corpora, the task key for Hermes, and the session id when nothing else is available.
+
+#### Scenario: Public corpus session
+- **WHEN** a `swechat-v1` session has `repo_id` R
+- **THEN** its cluster key is R
+
+### Requirement: Hermes preload mapping
+The Hermes adapter SHALL map cron sessions to cron jobs by prompt hash or `system_prompt_hash` where possible, and SHALL record each skill listed for the mapped job as a `preloaded` load at step 0. Sessions that cannot be mapped SHALL be counted in the census.
+
+#### Scenario: Mapped cron session
+- **WHEN** a cron session maps to a job whose configuration lists `job-tracker`
+- **THEN** the session has a `preloaded` load of `job-tracker` at step 0
+
