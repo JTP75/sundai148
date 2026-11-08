@@ -359,6 +359,59 @@ def test_evidence_only_fallback_keeps_the_demo(tmp_path):
     assert "no evidence rows" not in text
 
 
+def test_real_score_shape_renders_experiments(tmp_path):
+    """W4's merged experiments.json: top-level popularity/bloat/sensitivity plus a nested experiments block."""
+    data = make_standin_data(tmp_path)
+    out = data / CORPUS / "out"
+    io.write_json(out / "experiments.json", {
+        "corpus": CORPUS,
+        "ranking": {"n_ranked": 3, "n_supported": 3, "prior": {"mean": 0.6, "tau2": 0.07}},
+        "popularity": {"load_count_rho": 0.62, "mean_base_rate_rho": -0.8, "threshold": 0.5, "flagged": True},
+        "bloat": {"computable": True, "n_agent_touched": 3, "n_never_loaded": 1,
+                  "n_loaded_unsupported": 1, "share_never_loaded": 0.33,
+                  "share_loaded_unsupported": 0.33, "never_loaded": ["never-loaded-skill"],
+                  "loaded_unsupported": ["cond-skill"]},
+        "sensitivity": {"excluded_flags": ["incomplete", "overlap"],
+                        "rows": [{"skill": "mid-skill", "lift": 0.28, "lift_shrunk_stable": 0.27,
+                                  "n_loads": 5, "n_loads_stable": 5}]},
+        "experiments": {
+            "corpus": CORPUS,
+            "pre_post": {"computable": True, "by_provenance": [], "rows": [
+                {"skill": "mid-skill", "provenance_group": "agent-touched", "pre_treat": 0.2,
+                 "post_treat": 0.4, "did": 0.2, "n_treat": 4}],
+                "skipped": [{"skill": "habit-skill", "reason": "missing pre- or post-creation sessions"}],
+                "note": "no keyed control task"},
+            "edit_response": {"computable": True, "n_changes": 1, "rows": [
+                {"skill": "mid-skill", "signature": "terminal: make", "kind": "added", "pre_rate": 0.22,
+                 "post_rate": 0.43, "delta": 0.21, "unchanged_delta": 0.05, "n_pre": 61, "n_post": 24}]},
+            "paired_runs": {"computable": True, "skills": {"mid-skill": {
+                "computable": True, "n_pairs": 4, "observational_lift": 0.3,
+                "experimental_difference": 0.25, "endogeneity_gap": 0.05}}},
+            "trigger_split": {"computable": True, "by_trigger": [
+                {"trigger": "chosen", "lift": 0.2, "n_loads": 9},
+                {"trigger": "preloaded", "lift": 0.05, "n_loads": 2}]},
+        },
+    })
+    io.write_json(out / "expect_eval.json", {
+        "corpus": CORPUS,
+        "synth": {"next_command": {
+            "model": {"1": 0.5, "5": 0.6, "10": 0.7},
+            "popularity_baseline": {"1": 0.4, "5": 0.5, "10": 0.6},
+            "steps": 100, "sessions": 10, "candidates": 5, "oov_share": 0.1,
+        }},
+    })
+    report.main(["--data", str(data), "--corpus", CORPUS])
+    text = _summary(data)
+    assert "| mid-skill | terminal: make | added | 0.220 | 0.430 | 0.210 | 0.050 | 61 -> 24 |" in text
+    assert "| mid-skill | agent-touched | 0.200 | 0.400 | 0.200 | 4 |" in text
+    assert "| mid-skill | 4 | 0.300 | 0.250 | 0.050 |" in text
+    assert "| chosen | 0.200 | 9 |" in text
+    assert "## Sensitivity run" in text and "| mid-skill |" in text
+    assert "rho = -0.800" in text
+    assert "The expectation model beats the popularity-only baseline at every reported k." in text
+    assert "Test out-of-vocabulary share: 10.0%." in text
+
+
 def test_reports_every_corpus_by_default(tmp_path):
     data = make_standin_data(tmp_path)
     other = data / "other"

@@ -41,10 +41,10 @@ PROVENANCE_COLORS = {
     "no-agent-trace": "#2b6cb0",
 }
 EXPERIMENT_SECTIONS = (
-    ("pre_post_creation", "Pre/post creation (S1)"),
-    ("edit_response", "Edit-response (S2)"),
-    ("paired_runs", "Paired-run validation (S3)"),
-    ("trigger_split", "Trigger split"),
+    (("pre_post", "pre_post_creation"), "Pre/post creation (S1)"),
+    (("edit_response",), "Edit-response (S2)"),
+    (("paired_runs",), "Paired-run validation (S3)"),
+    (("trigger_split",), "Trigger split"),
 )
 CAVEAT_ENDGENEITY = (
     "Observational lift is an upper bound on skill influence because loads are endogenous: an agent "
@@ -201,7 +201,7 @@ def headline_novel_local(strata: list[dict]) -> tuple:
 
 def headline_provenance(potency: list[dict], experiments) -> dict:
     """Headline 2: agent-touched vs no-agent-trace lift, pre/post when computable (D16)."""
-    pre = _experiment(experiments, "pre_post_creation")
+    pre = _experiment(experiments, "pre_post", "pre_post_creation")
     if isinstance(pre, dict) and _truthy(pre.get("computable")):
         groups = pre.get("groups")
         if not isinstance(groups, dict):
@@ -252,18 +252,33 @@ def headline_ci_zero(potency: list[dict]) -> tuple:
 
 
 # ---------------------------------------------------------------- popularity + experiments
-def _experiment(experiments, key):
+def _experiment(experiments, *keys):
+    """First present key, looking inside a nested `experiments` block too (score.py's shape)."""
+    sources = []
     if isinstance(experiments, dict):
-        return experiments.get(key)
+        inner = experiments.get("experiments")
+        if isinstance(inner, dict):
+            sources.append(inner)
+        sources.append(experiments)
+    for source in sources:
+        for key in keys:
+            if key in source:
+                return source[key]
     return None
+
+
+def _block(experiments, *keys) -> dict:
+    value = _experiment(experiments, *keys)
+    return value if isinstance(value, dict) else {}
 
 
 def popularity_check(potency: list[dict], experiments) -> list[dict]:
     """Spearman of potency vs load count and vs the set's mean base rate (D9)."""
-    reported = _experiment(experiments, "popularity_check")
-    reported = reported if isinstance(reported, dict) else {}
-    out = []
-    loads_rho = _f(reported.get("spearman_load_count"))
+    block = _block(experiments, "popularity", "popularity_check")
+    threshold = _f(block.get("threshold"), float(schema.POPULARITY_FLAG_RHO))
+    loads_rho = _f(block.get("load_count_rho"))
+    if loads_rho is None:
+        loads_rho = _f(block.get("spearman_load_count"))
     source = "`experiments.json`"
     if loads_rho is None:
         lifts, counts = [], []
@@ -275,36 +290,139 @@ def popularity_check(potency: list[dict], experiments) -> list[dict]:
             counts.append(count)
         loads_rho = spearman(lifts, counts)
         source = "computed here from `potency.csv`"
-    out.append({"label": "potency vs load count", "rho": loads_rho, "source": source})
+    out = [{"label": "potency vs load count", "rho": loads_rho, "source": source, "threshold": threshold}]
 
-    base_rho = _f(reported.get("spearman_base_rate"))
+    base_rho = _f(block.get("mean_base_rate_rho"))
+    if base_rho is None:
+        base_rho = _f(block.get("spearman_base_rate"))
     out.append({"label": "potency vs mean base rate of the prescribed set", "rho": base_rho,
+                "threshold": threshold,
                 "source": "`experiments.json`" if base_rho is not None
-                else "the score stage does not export the mean base rate per skill"})
+                else "the score stage does not export that correlation"})
     return out
 
 
+def _table(header: list, rows: list) -> list[str]:
+    lines = ["| " + " | ".join(header) + " |",
+             "| " + " | ".join("---" if i == 0 else "---:" for i in range(len(header))) + " |"]
+    for row in rows:
+        lines.append("| " + " | ".join(_cell(value) for value in row) + " |")
+    return lines
+
+
+def _cell(value) -> str:
+    if value is None:
+        return "-"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return f"{value:.3f}"
+    return str(value)
+
+
 def _experiment_lines(experiments) -> list[str]:
-    lines: list[str] = []
     available = isinstance(experiments, dict)
-    for key, title in EXPERIMENT_SECTIONS:
-        entry = _experiment(experiments, key)
+    lines: list[str] = []
+    for keys, title in EXPERIMENT_SECTIONS:
+        entry = _experiment(experiments, *keys)
         lines += [f"### {title}", ""]
         if entry is None:
-            reason = "no `experiments.json`" if not available else f"`experiments.json` has no `{key}` entry"
+            reason = "no `experiments.json`" if not available else \
+                f"`experiments.json` has no `{keys[0]}` entry"
             lines.append(f"Not computable: {reason}.")
         elif isinstance(entry, dict) and "computable" in entry and not _truthy(entry.get("computable")):
             lines.append(f"Not computable: {entry.get('reason') or entry.get('note') or 'inputs missing'}.")
-        elif isinstance(entry, dict):
-            result = entry.get("result")
-            if isinstance(result, dict):
-                lines.extend(_kv_lines(result))
-            else:
-                lines.extend(_kv_lines({k: v for k, v in entry.items() if k != "computable"}))
         else:
-            lines.append("Not computable: unexpected `experiments.json` shape.")
+            lines += _render_experiment(keys[0], entry)
         lines.append("")
     return lines
+
+
+def _render_experiment(name: str, entry) -> list[str]:
+    if not isinstance(entry, dict):
+        return ["Not computable: unexpected `experiments.json` shape."]
+    renderer = {
+        "pre_post": _render_pre_post,
+        "edit_response": _render_edit_response,
+        "paired_runs": _render_paired,
+        "trigger_split": _render_triggers,
+    }.get(name)
+    if renderer is not None:
+        return renderer(entry)
+    result = entry.get("result")
+    if isinstance(result, dict):
+        return _kv_lines(result)
+    return _kv_lines({key: value for key, value in entry.items() if key != "computable"})
+
+
+def _render_pre_post(entry: dict) -> list[str]:
+    out: list[str] = []
+    groups = entry.get("by_provenance") or []
+    rows = entry.get("rows") or []
+    if isinstance(groups, list) and groups:
+        out += _table(["provenance group", "pre", "post", "difference-in-differences", "treatment sessions"],
+                      [[g.get("provenance_group", ""), g.get("pre_treat"), g.get("post_treat"), g.get("did"),
+                        g.get("n_treat")] for g in groups if isinstance(g, dict)])
+    elif isinstance(rows, list) and rows:
+        out += _table(["skill", "provenance", "pre", "post", "difference-in-differences", "sessions"],
+                      [[r.get("skill", ""), r.get("provenance_group", ""), r.get("pre_treat"), r.get("post_treat"),
+                        r.get("did"), r.get("n_treat")] for r in rows if isinstance(r, dict)])
+    else:
+        out.append("No skill has both a pre-creation and a post-creation window.")
+    for item in entry.get("skipped") or []:
+        if isinstance(item, dict):
+            out.append(f"- skipped `{item.get('skill', '')}`: {item.get('reason', 'no reason given')}")
+    note = entry.get("note")
+    if note:
+        out += ["", str(note)]
+    return out
+
+
+def _render_edit_response(entry: dict) -> list[str]:
+    rows = [r for r in (entry.get("rows") or []) if isinstance(r, dict)]
+    if rows:
+        return _table(["skill", "signature", "change", "pre rate", "post rate", "delta", "unchanged delta",
+                       "windows"],
+                      [[r.get("skill", ""), r.get("signature", ""), r.get("kind", ""), r.get("pre_rate"),
+                        r.get("post_rate"), r.get("delta"), r.get("unchanged_delta"),
+                        f"{_cell(r.get('n_pre'))} -> {_cell(r.get('n_post'))}"] for r in rows])
+    # Older score-stage shape: a mapping of skill -> {added, removed, pre, post}.
+    result = entry.get("result")
+    if isinstance(result, dict) and result:
+        return _kv_lines(result)
+    return ["No recorded change added or removed a prescribed signature."]
+
+
+def _render_paired(entry: dict) -> list[str]:
+    skills = entry.get("skills")
+    if not isinstance(skills, dict) or not skills:
+        return ["No skill has paired with/without-skill runs."]
+    rows = []
+    for skill in sorted(skills, key=str):
+        value = skills[skill] if isinstance(skills[skill], dict) else {}
+        if value and not _truthy(value.get("computable", True)):
+            rows.append([skill, None, None, None, "not computable"])
+            continue
+        rows.append([skill, value.get("n_pairs"), value.get("observational_lift"),
+                     value.get("experimental_difference"), value.get("endogeneity_gap")])
+    return _table(["skill", "pairs", "observational lift", "experimental difference", "endogeneity gap"], rows)
+
+
+def _render_triggers(entry: dict) -> list[str]:
+    arms = entry.get("by_trigger")
+    rows = []
+    if isinstance(arms, list):
+        rows = [[a.get("trigger", ""), a.get("lift"), a.get("n_loads")] for a in arms if isinstance(a, dict)]
+    else:
+        for key in sorted(entry, key=str):
+            value = entry.get(key)
+            if isinstance(value, dict) and ("lift" in value or "n_loads" in value):
+                rows.append([key, value.get("lift"), value.get("n_loads")])
+    if not rows:
+        return ["No trigger has scorable loads."]
+    return _table(["trigger", "lift", "loads"], rows)
 
 
 def _kv_lines(mapping: dict) -> list[str]:
@@ -542,24 +660,25 @@ def _insufficient_skills(inputs: dict) -> list:
 def _popularity_lines(inputs: dict) -> list[str]:
     checks = popularity_check(inputs["potency"], inputs["experiments"])
     flagged = [c["label"] for c in checks
-               if c["rho"] is not None and abs(c["rho"]) >= schema.POPULARITY_FLAG_RHO]
+               if c["rho"] is not None and abs(c["rho"]) >= c["threshold"]]
     lines = ["## Popularity check", ""]
     if all(c["rho"] is None for c in checks):
-        lines += [f"Not computable: neither `potency.csv` nor `experiments.json` supplies a correlation.",
+        lines += ["Not computable: neither `potency.csv` nor `experiments.json` supplies a correlation.",
                   ""]
         return lines
+    threshold = checks[0]["threshold"]
     if flagged:
-        lines.append(f"**Flagged**: |rho| >= {schema.POPULARITY_FLAG_RHO} for "
+        lines.append(f"**Flagged**: |rho| >= {threshold} for "
                      + ", ".join(f"`{label}`" for label in flagged)
                      + ". Part of the ranking may reflect popularity rather than influence.")
     else:
-        lines.append(f"Not flagged: every |rho| is below {schema.POPULARITY_FLAG_RHO}.")
+        lines.append(f"Not flagged: every |rho| is below {threshold}.")
     lines.append("")
     for check in checks:
         if check["rho"] is None:
             lines.append(f"- {check['label']}: not computable ({check['source']})")
         else:
-            mark = "flagged" if abs(check["rho"]) >= schema.POPULARITY_FLAG_RHO else "not flagged"
+            mark = "flagged" if abs(check["rho"]) >= check["threshold"] else "not flagged"
             lines.append(f"- {check['label']}: rho = {check['rho']:.3f} ({mark}; {check['source']})")
     lines.append("")
     return lines
@@ -658,27 +777,65 @@ def _excluded_lines(inputs: dict) -> list[str]:
 
 
 def _supporting_lines(inputs: dict) -> list[str]:
-    provenance, loads, potency = inputs["provenance"], inputs["loads"], inputs["potency"]
     lines = ["## Supporting numbers", ""]
-    if not provenance:
-        lines += ["Bloat statistic not computable: no `provenance.jsonl` in this corpus.", ""]
+    block = _block(inputs["experiments"], "bloat")
+    if "share_never_loaded" in block and _truthy(block.get("computable", True)):
+        agent = _i(block.get("n_agent_touched"))
+        never = _i(block.get("n_never_loaded"))
+        unsupported = _i(block.get("n_loaded_unsupported"))
+        share_never = _f(block.get("share_never_loaded"))
+        share_unsupported = _f(block.get("share_loaded_unsupported"))
+        lines.append(f"- Agent-touched skills never loaded: {never} of {agent}"
+                     + (f" ({100.0 * share_never:.0f}%)" if share_never is not None else "") + ".")
+        lines.append(f"- Agent-touched skills loaded but never supported: {unsupported}"
+                     + (f" ({100.0 * share_unsupported:.0f}%)" if share_unsupported is not None else "") + ".")
+        for key, label in (("never_loaded", "Never loaded"), ("loaded_unsupported", "Loaded, never supported")):
+            names = [str(name) for name in (block.get(key) or [])]
+            if names:
+                lines.append(f"- {label}: " + ", ".join(f"`{name}`" for name in sorted(names)) + ".")
+        lines += ["", "These are supporting counts, not headline numbers.", ""]
         return lines
-    agent = sorted(str(row.get("skill", "")) for row in provenance if _truthy(row.get("agent_touched")))
+
+    provenance, loads, potency = inputs["provenance"], inputs["loads"], inputs["potency"]
+    if not provenance:
+        lines += ["Bloat statistic not computable: no `provenance.jsonl` and no `bloat` block in "
+                  "`experiments.json`.", ""]
+        return lines
+    agent_skills = sorted(str(row.get("skill", "")) for row in provenance if _truthy(row.get("agent_touched")))
     loaded = {str(row.get("skill", "")) for row in loads}
     supported = {str(row.get("skill", "")) for row in potency if _truthy(row.get("supported"))}
-    if not agent:
+    if not agent_skills:
         lines += ["No skill in this corpus is agent-touched, so the bloat statistic is empty.", ""]
         return lines
-    never_loaded = [skill for skill in agent if skill not in loaded]
-    touched_loaded = [skill for skill in agent if skill in loaded]
+    never_loaded = [skill for skill in agent_skills if skill not in loaded]
+    touched_loaded = [skill for skill in agent_skills if skill in loaded]
     loaded_unsupported = [skill for skill in touched_loaded if skill not in supported]
-    lines.append(f"- Agent-touched skills never loaded: {len(never_loaded)} of {len(agent)} "
-                 f"({100.0 * len(never_loaded) / len(agent):.0f}%).")
+    lines.append(f"- Agent-touched skills never loaded: {len(never_loaded)} of {len(agent_skills)} "
+                 f"({100.0 * len(never_loaded) / len(agent_skills):.0f}%).")
     share = f"{100.0 * len(loaded_unsupported) / len(touched_loaded):.0f}%" if touched_loaded else "n/a"
     lines.append(f"- Agent-touched skills loaded but never supported: {len(loaded_unsupported)} of "
                  f"{len(touched_loaded)} ({share}).")
     lines += ["", "These are supporting counts, not headline numbers.", ""]
     return lines
+
+
+def _sensitivity_lines(inputs: dict) -> list[str]:
+    block = _block(inputs["experiments"], "sensitivity")
+    rows = [row for row in (block.get("rows") or []) if isinstance(row, dict)]
+    if not rows:
+        return []
+    primary = {str(row.get("skill", "")): row for row in inputs["potency"]}
+    flags = block.get("excluded_flags") or ["incomplete", "overlap"]
+    table = []
+    for row in sorted(rows, key=lambda r: str(r.get("skill", ""))):
+        skill = str(row.get("skill", ""))
+        table.append([skill, primary.get(skill, {}).get("lift_shrunk"), row.get("lift_shrunk_stable"),
+                      row.get("n_loads"), row.get("n_loads_stable")])
+    return ["## Sensitivity run", "",
+            f"Loads flagged {', '.join(f'`{flag}`' for flag in flags)} stay in the primary result and are "
+            f"excluded here. Close shrunken values mean those flags do not drive the ranking.", ""] \
+        + _table(["skill", "shrunken (primary)", "shrunken (flag-excluded)", "loads", "loads kept"], table) \
+        + [""]
 
 
 def _model_lines(inputs: dict) -> list[str]:
@@ -687,6 +844,47 @@ def _model_lines(inputs: dict) -> list[str]:
     if not isinstance(evaluation, dict):
         lines += ["Not computable: `out/expect_eval.json` is missing, so lift is measured against base "
                   "rates and no hit-rate comparison is available.", ""]
+        return lines
+    block = evaluation
+    if "next_command" not in block:
+        named = block.get(inputs["corpus"])
+        if isinstance(named, dict):
+            block = named
+        else:
+            nested = next((value for value in block.values()
+                           if isinstance(value, dict) and "next_command" in value), None)
+            if nested is not None:
+                block = nested
+    next_command = block.get("next_command") if isinstance(block, dict) else None
+    if isinstance(next_command, dict):
+        model = next_command.get("model") if isinstance(next_command.get("model"), dict) else {}
+        baseline = (next_command.get("popularity_baseline")
+                    if isinstance(next_command.get("popularity_baseline"), dict) else {})
+        ks = sorted({str(k) for k in model} & {str(k) for k in baseline},
+                    key=lambda k: (_f(k, default=float("inf")), k))
+        rows, wins = [], 0
+        for k in ks:
+            hit, base = _f(model.get(k)), _f(baseline.get(k))
+            rows.append([f"@{k}", hit, base, None if hit is None or base is None else hit - base])
+            if hit is not None and base is not None and hit > base:
+                wins += 1
+        lines += [f"Next-command hit rate over {_cell(next_command.get('steps'))} test steps, "
+                  f"{_cell(next_command.get('sessions'))} sessions, "
+                  f"{_cell(next_command.get('candidates'))} candidates:", ""]
+        lines += _table(["k", "model", "popularity baseline", "difference"], rows)
+        lines.append("")
+        if ks and wins == len(ks):
+            lines.append("The expectation model beats the popularity-only baseline at every reported k.")
+        elif ks and wins == 0:
+            lines.append("The model does **not** beat the popularity-only baseline at any reported k, so read "
+                         "lift as the amount above base rate rather than as model-predicted surprise.")
+        elif ks:
+            lines.append(f"The model beats the popularity-only baseline at {wins} of {len(ks)} reported k "
+                         f"values.")
+        oov = _f(next_command.get("oov_share"))
+        if oov is not None:
+            lines.append(f"Test out-of-vocabulary share: {100.0 * oov:.1f}%.")
+        lines.append("")
         return lines
     beats = evaluation.get("beats_popularity", evaluation.get("model_beats_popularity"))
     if beats is True:
@@ -764,6 +962,7 @@ def summary_markdown(corpus_dir: Path, inputs: dict, program_map=None) -> str:
     lines += _evidence_lines(inputs)
     lines += _excluded_lines(inputs)
     lines += _supporting_lines(inputs)
+    lines += _sensitivity_lines(inputs)
     lines += ["## Natural experiments", ""] + _experiment_lines(inputs["experiments"])
     lines += _appendix_lines(corpus_dir, inputs, program_map)
     return "\n".join(lines).rstrip("\n") + "\n"
