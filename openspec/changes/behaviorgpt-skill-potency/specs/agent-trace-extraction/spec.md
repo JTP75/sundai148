@@ -2,23 +2,24 @@
 
 ## Purpose
 
-Turns an agent's private session log into inputs for expectation and potency analysis: command signatures, ordered histories, skill-load records with the prescribed set in force at load time, no-load control windows and skill provenance. It must not leak secrets or future data into training.
+Turns one corpus's session logs into the intermediate format: ordered steps with command signatures, skill-load records with the prescribed set in force at load time, no-load control windows and skill provenance. It must not leak secrets or future data into training. Corpus registration, privacy classes, snapshots and the census are in `corpus-intake`.
 
 ## ADDED Requirements
 
-### Requirement: Read-only access to the session log
-The extractor SHALL open the session database and skill metadata files read-only and SHALL NOT modify them.
-
-#### Scenario: Extraction leaves the source unchanged
-- **WHEN** the extractor runs against `state.db`
-- **THEN** the database file's contents and modification time are unchanged afterwards
-
 ### Requirement: Command signature normalization
-Each tool call SHALL be reduced to a command signature: the tool name plus, for shell commands, the program and its subcommand (if any). Arguments, paths, flag values, and quoted strings SHALL be dropped from the signature.
+Each tool call SHALL be reduced to a command signature: the tool name plus, for shell commands, the program and its subcommand. Programs on a fixed known-CLI list SHALL keep up to two subcommand levels. Arguments, paths, flag values and quoted strings SHALL be dropped. Compound shell commands SHALL yield one signature per segment.
 
 #### Scenario: Shell command with arguments
 - **WHEN** a terminal tool call runs `git rebase -i HEAD~3`
 - **THEN** its signature is `terminal: git rebase`
+
+#### Scenario: Multi-level CLI
+- **WHEN** a terminal call runs `gh pr create --fill`
+- **THEN** its signature is `terminal: gh pr create`, and a later `gh pr view` does not match it
+
+#### Scenario: Compound command
+- **WHEN** a terminal call runs `cd repo && pytest -q`
+- **THEN** it yields `terminal: cd` and `terminal: pytest` as consecutive steps
 
 #### Scenario: Non-shell tool
 - **WHEN** a `read_file` tool call reads `/home/x/notes.md`
@@ -28,59 +29,112 @@ Each tool call SHALL be reduced to a command signature: the tool name plus, for 
 - **WHEN** a command contains a token, key, or URL with credentials
 - **THEN** none of that text appears in any extracted artifact
 
-### Requirement: Ordered session histories
-Each session SHALL become an ordered (oldest-first) list of steps, each with its signature, position, and, for skill loads, the skill name.
+### Requirement: Stable step ordering
+Steps SHALL be ordered by source sequence (message order, then position within the tool-call list) and SHALL carry a stable call id, the source offset, the step offset and the assistant batch id. Each request SHALL be joined to its result. Shell steps SHALL be recorded as command attempts, with exit status when available.
 
-#### Scenario: Mixed session
-- **WHEN** a session searches for "rebase", loads skill `git-workflow`, then runs `git rebase`
-- **THEN** its history holds a `search_files` step, a load step for `git-workflow`, and a `terminal: git rebase` step, in that order
+#### Scenario: Parallel calls in one batch
+- **WHEN** one assistant message issues three tool calls
+- **THEN** they become three consecutive steps sharing one batch id, in list order
+
+### Requirement: Successful loads only
+A skill load SHALL count only when its result is non-error. Commands in the same assistant batch as the load SHALL be flagged `same_batch` and SHALL NOT count toward that load's adherence.
+
+#### Scenario: Load fails
+- **WHEN** a `skill_view` result reports that the skill was not found
+- **THEN** no load is recorded
+
+#### Scenario: Same-batch command
+- **WHEN** `skill_view gog-cli` and `gog tasks list` are issued in the same assistant message
+- **THEN** the `gog tasks list` step is flagged `same_batch` for that load
 
 ### Requirement: Prescribed set from the skill version at load time
-For every skill load, the extractor SHALL record the session, the load position, the skill name, and the set of command signatures prescribed by the skill text **in force at the load's timestamp**, normalized with the same rule. When that version cannot be rebuilt, the load SHALL be flagged `version_unknown`, and the current text SHALL be used only if the load falls after the skill's last recorded change.
+Each load SHALL record the version id of the skill text in force at its timestamp. Version sources SHALL be tried in this order:
+1. curator-ledger replay with full text;
+2. replay of `skill_manage` calls in the session log;
+3. the stable core, flagged `version_core`: commands present in both the earliest known and the current version.
+
+A load SHALL be flagged `version_unknown` only when no source applies.
 
 #### Scenario: Command added by a later patch
 - **WHEN** a patch after the load adds `gh pr create` to the skill
-- **THEN** that load's prescribed set does not contain `terminal: gh pr`
+- **THEN** that load's prescribed set does not contain `terminal: gh pr create`
 
-#### Scenario: Version not recoverable before last patch
-- **WHEN** a load precedes the last patch and the earlier text cannot be rebuilt
-- **THEN** the load is flagged `version_unknown` and excluded from potency scoring
+#### Scenario: Load before the ledger existed
+- **WHEN** a load predates 2026-10-01 and an earlier `skill_manage` call recorded the skill's text
+- **THEN** the load uses the text replayed from that call
+
+#### Scenario: No version text anywhere
+- **WHEN** neither replay applies
+- **THEN** the prescribed set is the stable core and the load is flagged `version_core`
+
+### Requirement: Prescription roles
+Each prescribed command SHALL carry a role: `required`, `example` or `avoid`. Roles for audited skills SHALL come from the committed hand-audited map, which may also prescribe tool names. All other skills SHALL use auto-extraction from code blocks and inline backticks, with every command tagged `required` and the skill flagged `auto`. A skill with no extractable command SHALL be recorded with an empty set and flagged not scorable.
+
+#### Scenario: Audited skill with an example block
+- **WHEN** the audit map tags `terminal: gog auth login` as `example` for `gog-cli`
+- **THEN** that command does not count toward adherence for `gog-cli` loads
 
 #### Scenario: Skill without commands
-- **WHEN** a loaded SKILL.md has no code blocks or recognizable commands
-- **THEN** the load is recorded with an empty prescribed set and flagged as not scorable
+- **WHEN** an unaudited SKILL.md has no code blocks or recognizable commands
+- **THEN** the load is recorded with an empty prescribed set and flagged not scorable
 
 ### Requirement: Maintenance and repeat loads flagged
-A load SHALL be flagged `maintenance` when `skill_manage` or a write to that skill's files on the same skill follows within N tool calls. A load SHALL be flagged `repeat` when the same skill was already loaded earlier in the session.
+A load SHALL be flagged `maintenance` when `skill_manage` or a write to that skill's files on the same skill follows within N steps. It SHALL be flagged `repeat` when the same skill was already loaded earlier in the session.
 
 #### Scenario: Load in order to edit
-- **WHEN** a session loads `job-tracker` and then calls `skill_manage` on `job-tracker` 3 calls later
+- **WHEN** a session loads `job-tracker` and then calls `skill_manage` on `job-tracker` 3 steps later
 - **THEN** that load is flagged `maintenance` and is not scored for potency
 
 ### Requirement: Load trigger label
-Each load SHALL be labeled `instructed` when the skill name appears in the user or cron prompt that precedes it in the same turn, and `chosen` otherwise. Only the label SHALL be emitted, not the prompt text.
+Each load SHALL be labeled:
+- `preloaded`, when the harness put the skill in context without a load call;
+- `instructed`, when the skill name appears in the user or cron prompt before it;
+- `chosen`, otherwise.
+
+For private corpora, the prompt scan SHALL run on the source machine and only the label SHALL be exported.
 
 #### Scenario: Cron prompt names the skill
 - **WHEN** a cron session's prompt mentions `manage-google-tasks` and the agent then loads it
 - **THEN** that load is labeled `instructed`
 
+#### Scenario: Detectable preload
+- **WHEN** a cron job's configuration attaches skill `job-tracker`
+- **THEN** each of that job's sessions has a `preloaded` load at step 0
+
+### Requirement: Window flags
+Each load's window SHALL be flagged `incomplete` when the session ends before N steps, and `overlap` when another skill load occurs inside it. Another load SHALL NOT close the window.
+
+#### Scenario: Overlapping loads
+- **WHEN** skill B loads 4 steps after skill A
+- **THEN** A's window still spans N steps and is flagged `overlap`
+
 ### Requirement: No-load control windows
-The extractor SHALL emit, for every step position, the window of the next N signatures, the previous k signatures, the session source, the recurring-task key when available, and the set of skills loaded in the previous N calls, so that controls without a given skill can be selected.
+The extractor SHALL emit, for every step position, the next N signatures, the previous k signatures, the session source, the task key and the set of skills loaded or preloaded in the previous N steps.
 
 #### Scenario: Window excludes a recent load
-- **WHEN** skill `gog-cli` was loaded 4 calls before a position
-- **THEN** that position's window lists `gog-cli` among recent loads and is not used as a no-load control for `gog-cli`
+- **WHEN** skill `gog-cli` was loaded 4 steps before a position
+- **THEN** that position's window lists `gog-cli` among recent loads and is not a no-load control for `gog-cli`
+
+### Requirement: Task key
+Each session SHALL carry a task key from the first available source:
+1. a cron job id;
+2. a hash of the normalized first user or cron prompt (digits and dates stripped), computed on the source machine;
+3. none.
+
+#### Scenario: Cron session without a job id
+- **WHEN** a cron session has no job id
+- **THEN** its task key is the prompt hash, and no prompt text is exported
 
 ### Requirement: Skill provenance
-The extractor SHALL emit per skill: `created_at`, `created_by` (as recorded, with the caveat that it is not proof of authorship), patch count, and the dated list of signatures added or removed by each recorded change.
+The extractor SHALL emit per skill: the creation date, `created_by` as recorded (with the caveat that it is not proof of authorship), the agent-touched flag, and the dated list of signatures added or removed by each recorded change.
 
 #### Scenario: Agent-created skill
 - **WHEN** `.usage.json` records `created_by: agent` for a skill
-- **THEN** the provenance output carries that value and its `created_at`
+- **THEN** the provenance output carries that value, its creation date, and `agent-touched: true`
 
 ### Requirement: Temporal split
-Every session and skill load SHALL be assigned to exactly one of `train` or `test` by session start time, using a single cutoff. No random split SHALL be used.
+Within each corpus, every session and load SHALL be assigned to exactly one of `train` or `test` by session start time, using a single cutoff. No random split SHALL be used.
 
 #### Scenario: Cutoff assignment
 - **WHEN** a session starts after the cutoff
-- **THEN** it and all its skill loads are in `test`, and none of its steps contribute to base rates, weights, strata, or model fitting
+- **THEN** it and its loads are in `test`, and none of its steps contribute to base rates, weights, strata, vocabulary or model fitting
