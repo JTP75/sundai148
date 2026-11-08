@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Turns an agent's private session log into the inputs BehaviorGPT needs (a command catalog, ordered event histories, and skill-load records), without leaking secrets and without leaking future data into training.
+Turns an agent's private session log into inputs for expectation and potency analysis: command signatures, ordered histories, skill-load records with the prescribed set in force at load time, no-load control windows and skill provenance. It must not leak secrets or future data into training.
 
 ## ADDED Requirements
 
 ### Requirement: Read-only access to the session log
-The extractor SHALL open the session database read-only and SHALL NOT modify it.
+The extractor SHALL open the session database and skill metadata files read-only and SHALL NOT modify them.
 
 #### Scenario: Extraction leaves the source unchanged
 - **WHEN** the extractor runs against `state.db`
@@ -28,38 +28,59 @@ Each tool call SHALL be reduced to a command signature: the tool name plus, for 
 - **WHEN** a command contains a token, key, or URL with credentials
 - **THEN** none of that text appears in any extracted artifact
 
-### Requirement: Command catalog in BehaviorGPT format
-The extractor SHALL emit one catalog parquet file with all 15 BehaviorGPT catalog columns. It SHALL have one row per distinct signature, a unique `id`, a human-readable `name`, `event_type` and `group` set to `product`, and null `image_url`.
-
-#### Scenario: Catalog passes schema check
-- **WHEN** the catalog file is produced
-- **THEN** it passes the SDK's catalog schema check with no errors
-
-#### Scenario: Popularity uses training data only
-- **WHEN** `frequency` is filled for a catalog row
-- **THEN** it counts only uses that fall in the training period
-
-### Requirement: Event histories mapped by meaning
-Each session SHALL become an ordered (oldest-first) list of events. A command run maps to a view of its catalog item, a search tool call maps to a search with its query text, and a skill load maps to a view of an out-of-catalog item named for the skill.
+### Requirement: Ordered session histories
+Each session SHALL become an ordered (oldest-first) list of steps, each with its signature, position, and, for skill loads, the skill name.
 
 #### Scenario: Mixed session
-- **WHEN** a session greps for "rebase", loads skill `git-workflow`, then runs `git rebase`
-- **THEN** its history is `Search("rebase")`, `View(skill git-workflow, out-of-catalog)`, `View("terminal: git rebase")` in that order
+- **WHEN** a session searches for "rebase", loads skill `git-workflow`, then runs `git rebase`
+- **THEN** its history holds a `search_files` step, a load step for `git-workflow`, and a `terminal: git rebase` step, in that order
 
-### Requirement: Skill-load records with prescribed commands
-For every skill load, the extractor SHALL record the session, the position of the load in the history, the skill name, and the set of command signatures its SKILL.md prescribes (taken from its code blocks and normalized with the same rule). A skill with no prescribed command SHALL be recorded with an empty set and flagged.
+### Requirement: Prescribed set from the skill version at load time
+For every skill load, the extractor SHALL record the session, the load position, the skill name, and the set of command signatures prescribed by the skill text **in force at the load's timestamp**, normalized with the same rule. When that version cannot be rebuilt, the load SHALL be flagged `version_unknown`, and the current text SHALL be used only if the load falls after the skill's last recorded change.
 
-#### Scenario: Skill with code blocks
-- **WHEN** a loaded SKILL.md contains a code block with `gh pr create --fill`
-- **THEN** that load's prescribed set contains `terminal: gh pr`
+#### Scenario: Command added by a later patch
+- **WHEN** a patch after the load adds `gh pr create` to the skill
+- **THEN** that load's prescribed set does not contain `terminal: gh pr`
+
+#### Scenario: Version not recoverable before last patch
+- **WHEN** a load precedes the last patch and the earlier text cannot be rebuilt
+- **THEN** the load is flagged `version_unknown` and excluded from potency scoring
 
 #### Scenario: Skill without commands
 - **WHEN** a loaded SKILL.md has no code blocks or recognizable commands
-- **THEN** the load is recorded with an empty prescribed set and is flagged as not scorable for potency
+- **THEN** the load is recorded with an empty prescribed set and flagged as not scorable
+
+### Requirement: Maintenance and repeat loads flagged
+A load SHALL be flagged `maintenance` when `skill_manage` or a write to that skill's files on the same skill follows within N tool calls. A load SHALL be flagged `repeat` when the same skill was already loaded earlier in the session.
+
+#### Scenario: Load in order to edit
+- **WHEN** a session loads `job-tracker` and then calls `skill_manage` on `job-tracker` 3 calls later
+- **THEN** that load is flagged `maintenance` and is not scored for potency
+
+### Requirement: Load trigger label
+Each load SHALL be labeled `instructed` when the skill name appears in the user or cron prompt that precedes it in the same turn, and `chosen` otherwise. Only the label SHALL be emitted, not the prompt text.
+
+#### Scenario: Cron prompt names the skill
+- **WHEN** a cron session's prompt mentions `manage-google-tasks` and the agent then loads it
+- **THEN** that load is labeled `instructed`
+
+### Requirement: No-load control windows
+The extractor SHALL emit, for every step position, the window of the next N signatures, the previous k signatures, the session source, the recurring-task key when available, and the set of skills loaded in the previous N calls, so that controls without a given skill can be selected.
+
+#### Scenario: Window excludes a recent load
+- **WHEN** skill `gog-cli` was loaded 4 calls before a position
+- **THEN** that position's window lists `gog-cli` among recent loads and is not used as a no-load control for `gog-cli`
+
+### Requirement: Skill provenance
+The extractor SHALL emit per skill: `created_at`, `created_by` (as recorded, with the caveat that it is not proof of authorship), patch count, and the dated list of signatures added or removed by each recorded change.
+
+#### Scenario: Agent-created skill
+- **WHEN** `.usage.json` records `created_by: agent` for a skill
+- **THEN** the provenance output carries that value and its `created_at`
 
 ### Requirement: Temporal split
 Every session and skill load SHALL be assigned to exactly one of `train` or `test` by session start time, using a single cutoff. No random split SHALL be used.
 
 #### Scenario: Cutoff assignment
 - **WHEN** a session starts after the cutoff
-- **THEN** it and all its skill loads are in `test`, and none of its events contribute to catalog popularity
+- **THEN** it and all its skill loads are in `test`, and none of its steps contribute to base rates, weights, strata, or model fitting

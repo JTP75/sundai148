@@ -1,0 +1,57 @@
+# Spec Delta
+
+## Purpose
+
+Predicts which commands the agent would run in the next N calls without a given skill, as the counterfactual for potency. Also reports whether that prediction beats simple popularity, so we can see whether "next action" prediction here is more than predicting common commands.
+
+## ADDED Requirements
+
+### Requirement: Expectation model fitted on no-load windows
+The system SHALL fit a model of P(command c runs in the next N calls | context) using only train-period windows that have no load, within the previous N calls, of any skill whose prescribed set contains c. Context SHALL include the previous k signatures, session source, recurring-task key when available, and position.
+
+#### Scenario: No test leakage
+- **WHEN** the expectation model is fitted
+- **THEN** no test-period session contributes to its training rows, base rates, or hyperparameters
+
+#### Scenario: Skill-exposed windows excluded
+- **WHEN** a train window follows a load of a skill that prescribes c
+- **THEN** that window is not a training row for c
+
+### Requirement: Expected adherence per load
+For each scorable load, the system SHALL compute expected adherence Â as the specificity-weighted mean over the prescribed set of the model's probability that each command runs in the next N calls, given the context at the load position with the load itself excluded.
+
+#### Scenario: Habitual command
+- **WHEN** the prescribed set holds only commands the agent runs in most comparable no-load windows
+- **THEN** Â is close to the observed adherence, and lift is near zero
+
+### Requirement: Popularity-only baseline
+The evaluation SHALL compare the expectation model against a baseline that predicts each command's train base rate alone, on the same test no-load windows.
+
+#### Scenario: Paired comparison
+- **WHEN** the evaluation runs
+- **THEN** the report states AUC and Brier score for both the model and the popularity baseline over the same rows, with the row count
+
+### Requirement: Popularity-stratified next-command evaluation
+The report SHALL give next-command precision@k for k ∈ {1, 5, 10} on test steps for the model and the popularity baseline, overall and split by command-frequency decile. Only first occurrences of a command within a session SHALL be scored.
+
+#### Scenario: Tail commands
+- **WHEN** precision@5 is reported
+- **THEN** it is also reported for commands in the bottom half of train frequency, so a model that only predicts popular commands is visible
+
+#### Scenario: Repeated command
+- **WHEN** `terminal: git status` runs three times in one session
+- **THEN** only the first run is scored, and the later two still appear in later steps' context
+
+### Requirement: Calibration report
+The system SHALL report a calibration curve (10 bins) for the expectation model on test no-load windows.
+
+#### Scenario: Calibration output
+- **WHEN** the evaluation completes
+- **THEN** `expect_eval.json` contains per-bin predicted and observed rates and bin counts
+
+### Requirement: Pluggable expectation backends
+The expected-adherence interface SHALL accept alternative backends (e.g. BehaviorGPT) that yield per-command probabilities for a context, evaluated with the same report. No backend SHALL send user ids or raw message text to an external service.
+
+#### Scenario: Optional external backend
+- **WHEN** an external backend is used
+- **THEN** it receives only signatures and session-relative order, and its results appear as a separate column in the evaluation report
