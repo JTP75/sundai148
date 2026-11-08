@@ -126,3 +126,9 @@ def test_episode_id_deterministic():
 def test_stage_help(stage):
     r = subprocess.run([sys.executable, "-m", f"potency.{stage}", "--help"], cwd=ROOT, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+def test_session_ids_unique():
+    sess = io.read_table(SYN, "sessions")
+    ids = [s["session_id"] for s in sess]
+    assert len(ids) == len(set(ids))
