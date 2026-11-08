@@ -53,7 +53,7 @@ Each prescribed command SHALL be labeled by in-corpus familiarity (novel, occasi
 - **THEN** its loads are reported under public/habitual, not under novel+local
 
 ### Requirement: Ranking with shrinkage and support marking
-Within each corpus, the system SHALL rank every skill with ≥2 scorable loads by empirical-Bayes shrunken mean lift, with 95% bootstrap CIs. Each row SHALL report load count, independent session count, prescribed-set size, follow-through rate, lift, placebo lift and stratum mix. A skill SHALL be marked **supported** only with ≥5 scorable loads and ≥3 independent sessions. An empty supported set SHALL be a valid outcome. A CI that spans zero SHALL be labeled "inconclusive."
+Within each corpus, the system SHALL rank every skill with ≥2 scorable loads by empirical-Bayes shrunken mean lift, with 95% bootstrap CIs. Each row SHALL report load count, distinct cluster-key count, prescribed-set size, follow-through rate, lift, placebo lift and stratum mix. A skill SHALL be marked **supported** only with ≥5 scorable loads and ≥3 distinct cluster keys. An empty supported set SHALL be a valid outcome. A CI that spans zero SHALL be labeled "inconclusive."
 
 #### Scenario: Sparse skill
 - **WHEN** a skill has 3 scorable loads from 1 session
@@ -75,7 +75,7 @@ The report SHALL state the Spearman correlation between skill potency and (a) lo
 - **THEN** the summary flags that the ranking may reflect popularity
 
 ### Requirement: Grouped resampling and validation
-Bootstrap resampling and any validation SHALL group by session and task key, so that related loads never split across resamples or folds. Predictive validation SHALL also hold out whole skills.
+Bootstrap resampling and any validation SHALL group by the corpus's cluster key (the repo for public Claude Code corpora, the task key for Hermes), so that related loads never split across resamples or folds. Predictive validation SHALL also hold out whole skills.
 
 #### Scenario: Recurring cron task
 - **WHEN** one cron task key accounts for 12 loads across 12 sessions

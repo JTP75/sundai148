@@ -41,7 +41,7 @@ For `private` corpora, exported files SHALL contain only allowlisted fields: sig
 ### Requirement: Outcome-free census
 Before analysis, each corpus SHALL produce `census.json` with:
 - raw and scorable loads per skill;
-- independent sessions per skill;
+- independent sessions and distinct cluster keys per skill;
 - exclusion counts by reason;
 - version-source coverage;
 - ledger `before`/`after` content type and sizes;
