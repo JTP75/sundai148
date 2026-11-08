@@ -232,7 +232,7 @@ def build_stochastic(rng: random.Random) -> list[Session]:
     for j in range(20):
         start = CREATE_NOVEL_TS + DAY * (1 + j)
         for arm in ("with_skill", "without_skill"):
-            s = Session(f"p{j:02d}-{arm[:4]}", start + (0 if arm == "with_skill" else 600), f"repo-p{j % 5}",
+            s = Session(f"p{j:02d}-{arm}", start + (0 if arm == "with_skill" else 600), f"repo-p{j % 5}",
                         task_key="task-pair", pair_id=f"pair-{j:02d}", pair_arm=arm)
             for _ in range(3):
                 s.add(bg_step(rng, s.last_sig()))
